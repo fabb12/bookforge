@@ -1,0 +1,6 @@
+PyQt6>=6.6
+datapizza-ai>=0.0.2
+# Client provider (installa quello che usi):
+datapizza-ai-clients-openai
+# datapizza-ai-clients-anthropic
+# datapizza-ai-clients-google

@@ -1,0 +1,119 @@
+"""Dialog iniziale: scelta tra modalità Crea libro e Modifica libro."""
+from __future__ import annotations
+
+from pathlib import Path
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
+    QFileDialog, QFormLayout, QGroupBox, QMessageBox, QWidget,
+)
+
+from ..core.model import Project, Book
+
+
+class StartupDialog(QDialog):
+    """Restituisce un Project tramite self.project dopo accept()."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("BookForge — Avvio")
+        self.setMinimumWidth(560)
+        self.project: Project | None = None
+
+        root = QVBoxLayout(self)
+        root.setSpacing(16)
+        root.setContentsMargins(28, 28, 28, 28)
+
+        title = QLabel("BookForge")
+        title.setObjectName("Title")
+        sub = QLabel("Scrittura e manutenzione di libri assistita da agenti AI")
+        sub.setObjectName("Subtitle")
+        root.addWidget(title)
+        root.addWidget(sub)
+
+        root.addWidget(self._create_box())
+        root.addWidget(self._open_box())
+
+    # ---------------- CREA ----------------
+    def _create_box(self) -> QWidget:
+        box = QGroupBox("Crea un nuovo libro")
+        lay = QFormLayout(box)
+        self.new_title = QLineEdit("Il mio libro")
+        self.new_author = QLineEdit("Autore")
+        self.new_topic = QLineEdit()
+        self.new_topic.setPlaceholderText("Argomento generale del libro/saggio")
+        self.new_folder = QLineEdit()
+        self.new_folder.setPlaceholderText("Cartella di destinazione del progetto")
+        pick = QPushButton("Sfoglia…")
+        pick.clicked.connect(self._pick_new_folder)
+        folder_row = QHBoxLayout()
+        fw = QWidget(); fw.setLayout(folder_row)
+        folder_row.setContentsMargins(0, 0, 0, 0)
+        folder_row.addWidget(self.new_folder)
+        folder_row.addWidget(pick)
+
+        lay.addRow("Titolo", self.new_title)
+        lay.addRow("Autore", self.new_author)
+        lay.addRow("Argomento", self.new_topic)
+        lay.addRow("Cartella", fw)
+
+        btn = QPushButton("Crea libro")
+        btn.setObjectName("Primary")
+        btn.clicked.connect(self._do_create)
+        lay.addRow(btn)
+        return box
+
+    def _pick_new_folder(self):
+        d = QFileDialog.getExistingDirectory(self, "Scegli cartella progetto")
+        if d:
+            self.new_folder.setText(d)
+
+    def _do_create(self):
+        folder = self.new_folder.text().strip()
+        if not folder:
+            QMessageBox.warning(self, "Attenzione", "Seleziona una cartella di destinazione.")
+            return
+        path = Path(folder)
+        # se la cartella scelta non contiene già un progetto, creiamo una sottocartella col titolo
+        safe = "".join(c for c in self.new_title.text() if c.isalnum() or c in " -_").strip()
+        target = path if not any(path.iterdir()) else path / (safe or "nuovo_libro") \
+            if path.exists() else path
+        book = Book(title=self.new_title.text().strip() or "Titolo del libro",
+                    author=self.new_author.text().strip() or "Autore",
+                    topic=self.new_topic.text().strip())
+        book.add_chapter("Capitolo 1")
+        proj = Project(target, book)
+        try:
+            proj.save()
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "Errore", f"Impossibile creare il progetto:\n{e}")
+            return
+        self.project = proj
+        self.accept()
+
+    # ---------------- APRI ----------------
+    def _open_box(self) -> QWidget:
+        box = QGroupBox("Modifica un libro esistente")
+        lay = QVBoxLayout(box)
+        info = QLabel("Apri la cartella di un progetto BookForge (contiene book.json).")
+        info.setObjectName("Subtitle")
+        lay.addWidget(info)
+        btn = QPushButton("Apri progetto…")
+        btn.clicked.connect(self._do_open)
+        lay.addWidget(btn)
+        return box
+
+    def _do_open(self):
+        d = QFileDialog.getExistingDirectory(self, "Apri cartella progetto")
+        if not d:
+            return
+        if not Project.is_project(d):
+            QMessageBox.warning(self, "Non valido",
+                                "La cartella selezionata non contiene un progetto BookForge.")
+            return
+        try:
+            self.project = Project.load(d)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "Errore", f"Impossibile aprire il progetto:\n{e}")
+            return
+        self.accept()

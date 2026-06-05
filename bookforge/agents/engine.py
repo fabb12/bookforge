@@ -53,6 +53,13 @@ class EngineConfig:
 # ---------------------------------------------------------------- system prompts
 def writer_prompt(book: Book) -> str:
     s = book.style
+    if s.style_prompt and s.style_prompt.strip():
+        ctx = (
+            f"Contesto del libro (non ripeterlo nel testo):\n"
+            f"Titolo: «{book.title}»\n"
+            f"Argomento: «{book.topic or book.title}»\n\n"
+        )
+        return ctx + s.style_prompt.strip()
     return (
         f"Sei un autore professionista. Scrivi in {s.language}, in {s.person}, "
         f"con tono {s.tone}, per un pubblico di {s.audience}.\n"

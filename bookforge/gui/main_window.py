@@ -74,6 +74,7 @@ class MainWindow(QMainWindow):
         add("📖 Apri in TeXstudio", self._open_texstudio)
         add("👁 Apri PDF", self._open_pdf)
         tb.addSeparator()
+        add("📂 File progetto", self._open_file_browser)
         add("📝 Sistema Word", self._open_docx_formatter)
 
     def _left_panel(self) -> QWidget:
@@ -418,6 +419,18 @@ class MainWindow(QMainWindow):
         ok, msg = compiler.open_pdf(self.project)
         if not ok:
             QMessageBox.warning(self, "PDF", msg)
+
+    def _open_file_browser(self):
+        # esporta prima il .tex così è disponibile nel browser dei file
+        self._save(silent=True)
+        try:
+            compiler.write_tex(self.project)
+        except Exception:  # noqa: BLE001 - non bloccante
+            pass
+        from .latex_browser import LatexBrowserWindow
+        self._browser = LatexBrowserWindow(
+            self.project.folder, engine=self.engine, engine_real=self.engine_real)
+        self._browser.show()
 
     def _open_docx_formatter(self):
         from .docx_dialog import DocxFormatDialog

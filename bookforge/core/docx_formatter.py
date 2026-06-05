@@ -18,6 +18,7 @@ questo modulo al motore degli agenti.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Callable
@@ -51,6 +52,16 @@ class DocxFormatRules:
     max_image_width_cm: float = 0.0     # 0 = larghezza utile della pagina
     center_images: bool = True
 
+    # --- didascalie (caption) ---
+    format_captions: bool = True
+    caption_below_image: bool = True    # sposta la didascalia SOTTO l'immagine
+    caption_size_pt: float = 10.0
+    caption_italic: bool = True
+    caption_center: bool = True
+
+    # --- indice / sommario (TOC) ---
+    fix_toc: bool = True                # forza Word ad aggiornare l'indice all'apertura
+
     # --- pulizia ---
     remove_empty_paragraphs: bool = True
     collapse_spaces: bool = True
@@ -79,9 +90,12 @@ class FormatReport:
     body_paragraphs_formatted: int = 0
     images_resized: int = 0
     images_centered: int = 0
+    captions_formatted: int = 0
+    captions_moved: int = 0
     empty_paragraphs_removed: int = 0
     paragraphs_corrected: int = 0
     margins_set: bool = False
+    toc_updated: bool = False
     warnings: list[str] = field(default_factory=list)
     output_path: str = ""
 
@@ -91,12 +105,17 @@ class FormatReport:
             f"Paragrafi formattati: {self.body_paragraphs_formatted}",
             f"Immagini ridimensionate: {self.images_resized}",
             f"Immagini centrate: {self.images_centered}",
-            f"Paragrafi vuoti rimossi: {self.empty_paragraphs_removed}",
+            f"Didascalie sistemate: {self.captions_formatted}",
         ]
+        if self.captions_moved:
+            lines.append(f"Didascalie spostate sotto l'immagine: {self.captions_moved}")
+        lines.append(f"Paragrafi vuoti rimossi: {self.empty_paragraphs_removed}")
         if self.paragraphs_corrected:
             lines.append(f"Paragrafi corretti (AI): {self.paragraphs_corrected}")
         if self.margins_set:
             lines.append("Margini di pagina impostati.")
+        if self.toc_updated:
+            lines.append("Indice: Word lo aggiornerà all'apertura del documento.")
         if self.warnings:
             lines.append("\nAvvisi:")
             lines.extend(f"  • {w}" for w in self.warnings)
@@ -121,6 +140,47 @@ def _heading_level(style_name: str) -> int | None:
             if tail.isdigit():
                 return int(tail)
     return None
+
+
+# Stili che Word usa per le voci dell'indice (EN "TOC N" / IT "Indice N" o "Sommario N").
+_TOC_PREFIXES = ("toc", "indice", "sommario", "table of contents")
+
+# Stili e parole-chiave tipici delle didascalie (EN "Caption" / IT "Didascalia").
+_CAPTION_STYLE_HINTS = ("caption", "didascalia")
+_CAPTION_TEXT_RE = re.compile(
+    r"^\s*(fig(?:ura|ure|\.)?|tab(?:ella|le|\.)?|immagine|foto|grafico|schema|tav(?:ola|\.)?)\b"
+    r"[\s\.:]*\d",
+    re.IGNORECASE,
+)
+
+
+def _style_name(para) -> str:
+    try:
+        return (para.style.name if para.style else "").strip().lower()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _is_toc_paragraph(para) -> bool:
+    """Una voce dell'indice: stile «TOC N» / «Indice N» / «Sommario N»."""
+    name = _style_name(para)
+    return any(name.startswith(p) for p in _TOC_PREFIXES)
+
+
+def _para_has_drawing(para) -> bool:
+    return bool(para._p.findall(".//" + _drawing_tag()))
+
+
+def _is_caption_paragraph(para) -> bool:
+    """Riconosce una didascalia da stile o da testo (Figura/Tabella N…)."""
+    name = _style_name(para)
+    if any(hint in name for hint in _CAPTION_STYLE_HINTS):
+        return True
+    txt = para.text.strip()
+    if txt and len(txt) < 320 and not _para_has_drawing(para) \
+            and _CAPTION_TEXT_RE.match(txt):
+        return True
+    return False
 
 
 # ------------------------------------------------------------------- formatter
@@ -177,6 +237,10 @@ def format_docx(
             section.left_margin = section.right_margin = m
         report.margins_set = True
 
+    # --- aggiorna anche lo stile base, così le modifiche "tengono" ovunque -
+    if rules.format_body:
+        _apply_base_style(document, rules, Pt, Cm, WD_ALIGN_PARAGRAPH)
+
     # --- 2/3. paragrafi: titoli e corpo -----------------------------------
     step("Formattazione di titoli e corpo del testo…")
     for para in document.paragraphs:
@@ -192,7 +256,17 @@ def format_docx(
             report.headings_normalized += 1
             continue
 
-        if level is None and rules.format_body:
+        if level is not None:
+            continue  # titolo ma normalizzazione disattivata → non toccarlo
+
+        # Non riformattare le voci dell'indice né le didascalie: hanno regole
+        # proprie (altrimenti l'indice e le caption verrebbero "sporcati").
+        if _is_toc_paragraph(para):
+            continue
+        if rules.format_captions and _is_caption_paragraph(para):
+            continue
+
+        if rules.format_body:
             # correzione AI del testo (opzionale) — preserva lo stile del paragrafo
             if rules.correct_text and text_corrector and para.text.strip():
                 try:
@@ -233,6 +307,16 @@ def format_docx(
 
         if rules.center_images:
             report.images_centered = _center_inline_images(document, WD_ALIGN_PARAGRAPH)
+
+    # --- 4b. didascalie: stile + posizionamento SOTTO l'immagine ----------
+    if rules.format_captions:
+        step("Sistemazione delle didascalie…")
+        _format_captions(document, rules, report, Pt, WD_ALIGN_PARAGRAPH)
+
+    # --- 4c. indice/sommario: forza Word ad aggiornarlo all'apertura ------
+    if rules.fix_toc:
+        step("Sistemazione dell'indice…")
+        report.toc_updated = _fix_toc(document)
 
     # --- 5. pulizia: paragrafi vuoti multipli -----------------------------
     if rules.remove_empty_paragraphs:
@@ -349,3 +433,137 @@ def _delete_paragraph(para) -> None:
     el = para._element
     el.getparent().remove(el)
     el._p = el._element = None
+
+
+# ------------------------------------------------------------------- stile base
+def _find_style(document, names):
+    """Cerca uno stile per nome (tollerante a IT/EN), restituisce l'oggetto o None."""
+    for n in names:
+        try:
+            return document.styles[n]
+        except KeyError:
+            continue
+    return None
+
+
+def _apply_base_style(document, rules, Pt, Cm, WD_ALIGN_PARAGRAPH) -> None:
+    """Aggiorna lo stile «Normale/Normal» così la formattazione del corpo «tiene»
+    anche dove i paragrafi non hanno formattazione diretta sui run."""
+    normal = _find_style(document, ("Normal", "Normale"))
+    if normal is None:
+        return
+    try:
+        normal.font.name = rules.body_font
+        normal.font.size = Pt(rules.body_size_pt)
+        _set_style_eastasia_font(normal, rules.body_font)
+        pf = normal.paragraph_format
+        pf.line_spacing = rules.line_spacing
+        pf.space_after = Pt(rules.space_after_pt)
+        if rules.first_line_indent_cm > 0:
+            pf.first_line_indent = Cm(rules.first_line_indent_cm)
+        if rules.justify:
+            pf.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    except Exception:  # noqa: BLE001 - best effort
+        pass
+
+
+def _set_style_eastasia_font(style, font_name) -> None:
+    try:
+        from docx.oxml.ns import qn
+        rpr = style.element.get_or_add_rPr()
+        rfonts = rpr.find(qn("w:rFonts"))
+        if rfonts is None:
+            rfonts = rpr.makeelement(qn("w:rFonts"), {})
+            rpr.append(rfonts)
+        for attr in ("w:ascii", "w:hAnsi", "w:cs", "w:eastAsia"):
+            rfonts.set(qn(attr), font_name)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# ------------------------------------------------------------------- didascalie
+def _format_captions(document, rules, report, Pt, WD_ALIGN_PARAGRAPH) -> None:
+    """Stila le didascalie (corpo più piccolo, corsivo, centrato) e — quando
+    serve — le sposta SOTTO l'immagine a cui si riferiscono."""
+    paras = document.paragraphs
+    n = len(paras)
+    for i, para in enumerate(paras):
+        if not _is_caption_paragraph(para):
+            continue
+
+        # stile della didascalia
+        for run in para.runs:
+            run.font.size = Pt(rules.caption_size_pt)
+            if rules.caption_italic:
+                run.font.italic = True
+        if rules.caption_center:
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # una didascalia non va rientrata come un paragrafo di corpo
+        para.paragraph_format.first_line_indent = None
+        report.captions_formatted += 1
+
+        # posizionamento: se la didascalia sta SOPRA l'immagine, spostala sotto
+        if rules.caption_below_image and i + 1 < n:
+            nxt = paras[i + 1]
+            prev = paras[i - 1] if i > 0 else None
+            next_is_img = _para_has_drawing(nxt)
+            prev_is_img = bool(prev) and _para_has_drawing(prev)
+            if next_is_img and not prev_is_img:
+                _move_paragraph_after(para, nxt)
+                report.captions_moved += 1
+
+
+def _move_paragraph_after(para, target) -> None:
+    """Sposta il paragrafo `para` immediatamente dopo `target` nell'XML."""
+    p_el = para._p
+    t_el = target._p
+    parent = p_el.getparent()
+    if parent is not None:
+        parent.remove(p_el)
+    t_el.addnext(p_el)
+
+
+# ------------------------------------------------------------------- indice/TOC
+def _fix_toc(document) -> bool:
+    """Fa sì che Word ricalcoli l'indice (numeri di pagina/voci) all'apertura.
+
+    Non possiamo impaginare noi il documento, quindi marchiamo i campi TOC come
+    «dirty» e impostiamo <w:updateFields/> in settings.xml: Word aggiornerà
+    l'indice (e gli altri campi) appena apre il file.
+    """
+    from docx.oxml.ns import qn
+
+    updated = False
+
+    # 1) marca i campi TOC come "dirty" (campi semplici e complessi)
+    body = document.element.body
+    for fld in body.iter(qn("w:fldSimple")):
+        if "TOC" in (fld.get(qn("w:instr")) or "").upper():
+            fld.set(qn("w:dirty"), "true")
+            updated = True
+    for instr in body.iter(qn("w:instrText")):
+        if instr.text and "TOC" in instr.text.upper():
+            # risali al fldChar "begin" e marcalo dirty
+            run = instr.getparent()
+            prev = run.getprevious() if run is not None else None
+            while prev is not None:
+                fc = prev.find(qn("w:fldChar"))
+                if fc is not None and fc.get(qn("w:fldCharType")) == "begin":
+                    fc.set(qn("w:dirty"), "true")
+                    updated = True
+                    break
+                prev = prev.getprevious()
+
+    # 2) chiedi a Word di aggiornare tutti i campi all'apertura
+    try:
+        settings = document.settings.element
+        upd = settings.find(qn("w:updateFields"))
+        if upd is None:
+            upd = settings.makeelement(qn("w:updateFields"), {})
+            settings.insert(0, upd)
+        upd.set(qn("w:val"), "true")
+        updated = True
+    except Exception:  # noqa: BLE001 - best effort
+        pass
+
+    return updated

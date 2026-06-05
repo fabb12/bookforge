@@ -19,6 +19,7 @@ class StartupDialog(QDialog):
         self.setWindowTitle("BookForge — Avvio")
         self.setMinimumWidth(560)
         self.project: Project | None = None
+        self.latex_folder: Path | None = None   # cartella da aprire nel browser file
 
         root = QVBoxLayout(self)
         root.setSpacing(16)
@@ -33,6 +34,8 @@ class StartupDialog(QDialog):
 
         root.addWidget(self._create_box())
         root.addWidget(self._open_box())
+        root.addWidget(self._browse_box())
+        root.addWidget(self._tools_box())
 
     # ---------------- CREA ----------------
     def _create_box(self) -> QWidget:
@@ -117,3 +120,46 @@ class StartupDialog(QDialog):
             QMessageBox.critical(self, "Errore", f"Impossibile aprire il progetto:\n{e}")
             return
         self.accept()
+
+    # ---------------- SFOGLIA CARTELLA LATEX ----------------
+    def _browse_box(self) -> QWidget:
+        box = QGroupBox("Apri una cartella di file LaTeX")
+        lay = QVBoxLayout(box)
+        info = QLabel(
+            "Apri una cartella qualsiasi che contiene un libro/saggio in LaTeX "
+            "(file .tex, immagini, capitoli…). Potrai sfogliare i file, scegliere "
+            "quale aprire e modificarlo direttamente. Non serve un progetto BookForge.")
+        info.setObjectName("Subtitle"); info.setWordWrap(True)
+        lay.addWidget(info)
+        btn = QPushButton("📂 Sfoglia cartella LaTeX…")
+        btn.clicked.connect(self._do_browse_latex)
+        lay.addWidget(btn)
+        return box
+
+    def _do_browse_latex(self):
+        d = QFileDialog.getExistingDirectory(self, "Apri cartella con file LaTeX")
+        if not d:
+            return
+        self.latex_folder = Path(d)
+        self.accept()
+
+    # ---------------- STRUMENTI (senza progetto) ----------------
+    def _tools_box(self) -> QWidget:
+        box = QGroupBox("Strumenti")
+        lay = QVBoxLayout(box)
+        info = QLabel("Formatta, impagina e correggi un documento Word (.docx) "
+                      "senza aprire alcun progetto.")
+        info.setObjectName("Subtitle"); info.setWordWrap(True)
+        lay.addWidget(info)
+        btn = QPushButton("📝 Sistema documento Word…")
+        btn.clicked.connect(self._do_word_tool)
+        lay.addWidget(btn)
+        return box
+
+    def _do_word_tool(self):
+        # apre il formattatore Word come dialog modale, senza chiudere l'avvio
+        from .docx_dialog import DocxFormatDialog
+        from ..agents.engine import EngineConfig, build_engine
+        engine, engine_real, _ = build_engine(EngineConfig.from_env())
+        dlg = DocxFormatDialog(self, engine=engine, engine_real=engine_real)
+        dlg.exec()

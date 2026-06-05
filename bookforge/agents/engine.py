@@ -94,6 +94,14 @@ SUMMARY_PROMPT = (
     "Restituisci solo il riassunto."
 )
 
+PROOFREAD_PROMPT = (
+    "Sei un correttore di bozze professionista. Ricevi un paragrafo di testo e ne "
+    "correggi ortografia, grammatica, punteggiatura e refusi, migliorando la scorrevolezza "
+    "SENZA alterare il significato, il tono o la lunghezza in modo sostanziale. "
+    "Non aggiungere commenti, virgolette o intestazioni. Non trasformarlo in elenco. "
+    "Restituisci SOLO il paragrafo corretto, come testo semplice."
+)
+
 
 # ---------------------------------------------------------------- real engine
 class DatapizzaEngine:
@@ -134,6 +142,13 @@ class DatapizzaEngine:
         a = self._agent("summary", SUMMARY_PROMPT)
         return a.run(text).text.strip()
 
+    def proofread(self, text: str) -> str:
+        if not text.strip():
+            return text
+        a = self._agent("proofreader", PROOFREAD_PROMPT)
+        out = a.run(text).text.strip()
+        return _strip_code_fences(out) or text
+
 
 # ---------------------------------------------------------------- offline fallback
 class MockEngine:
@@ -162,6 +177,10 @@ class MockEngine:
     def summarize(self, text: str) -> str:
         first = text.strip().split("\n\n")[0]
         return (first[:280] + "…") if len(first) > 280 else first
+
+    def proofread(self, text: str) -> str:
+        # offline: pulizia minima degli spazi, nessuna correzione linguistica
+        return re.sub(r"[ \t]{2,}", " ", text).strip()
 
 
 # ---------------------------------------------------------------- orchestrazione

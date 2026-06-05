@@ -73,6 +73,8 @@ class MainWindow(QMainWindow):
         add("🛠 Compila PDF", self._compile_pdf)
         add("📖 Apri in TeXstudio", self._open_texstudio)
         add("👁 Apri PDF", self._open_pdf)
+        tb.addSeparator()
+        add("📝 Sistema Word", self._open_docx_formatter)
 
     def _left_panel(self) -> QWidget:
         w = QWidget()
@@ -416,6 +418,11 @@ class MainWindow(QMainWindow):
         ok, msg = compiler.open_pdf(self.project)
         if not ok:
             QMessageBox.warning(self, "PDF", msg)
+
+    def _open_docx_formatter(self):
+        from .docx_dialog import DocxFormatDialog
+        dlg = DocxFormatDialog(self, engine=self.engine, engine_real=self.engine_real)
+        dlg.exec()
 
     def closeEvent(self, event):
         self._save(silent=True)

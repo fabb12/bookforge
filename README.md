@@ -42,14 +42,47 @@ provare interfaccia e flusso di compilazione senza costi.
 
 ---
 
-## Le due modalità
+## Le modalità di avvio
 
 All'avvio compare un dialog con:
 - **Crea un nuovo libro** — scegli titolo, autore, argomento e cartella del progetto.
 - **Modifica un libro esistente** — apri la cartella di un progetto (contiene `book.json`).
+- **Apri una cartella di file LaTeX** — apri una cartella *qualsiasi* che contiene un
+  libro/saggio in LaTeX (file `.tex`, immagini, capitoli inclusi con `\input`…). Si
+  apre un **browser dei file**: a sinistra l'albero della cartella, a destra l'editor.
+  Scegli quale file aprire, inserisci i tuoi punti/sezioni e salva. Da qui puoi anche
+  compilare il PDF, aprire in TeXstudio e usare «Sistema Word». **Non serve** un
+  progetto BookForge con `book.json`.
+- **Strumenti → Sistema documento Word** — formatta/impagina/corregge un `.docx`
+  **senza aprire alcun progetto**.
 
 Un *progetto* è semplicemente una cartella con `book.json` (lo stato del libro) e
 `book.tex` (l'output generato).
+
+### Browser dei file LaTeX
+Anche dentro un progetto, il pulsante **📂 File progetto** apre lo stesso browser
+sulla cartella del progetto: utile per vedere ed editare a mano `book.tex`, i file
+inclusi, le immagini e gli ausiliari della compilazione.
+
+---
+
+## Sistemazione di documenti Word (.docx)
+
+Il pulsante **📝 Sistema Word** (dalla finestra principale, dal browser file o
+direttamente dall'avvio) apre un dialog che lavora *direttamente* sul `.docx` con
+`python-docx` — modifiche chirurgiche e *lossless*. Oltre a titoli, corpo, margini e
+pulizia, sistema:
+
+- **Indice / sommario** — le voci dell'indice (stili `TOC N` / `Indice N` / `Sommario`)
+  **non** vengono toccate dalla formattazione del corpo, e viene impostato
+  `updateFields` così Word **aggiorna l'indice** (voci e numeri di pagina) all'apertura
+  del documento.
+- **Didascalie** — riconosce le didascalie dallo stile (`Didascalia`/`Caption`) o dal
+  testo (`Figura N…`, `Tabella N…`), le stila (corpo più piccolo, corsivo, centrate) e
+  le **sposta sotto l'immagine** a cui si riferiscono se erano sopra.
+- **Modifiche applicate correttamente** — oltre ai singoli paragrafi viene aggiornato
+  anche lo stile base (`Normale/Normal`), così la formattazione del corpo «tiene» anche
+  dove i paragrafi non hanno formattazione diretta.
 
 ---
 

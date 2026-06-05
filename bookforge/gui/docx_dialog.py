@@ -60,6 +60,8 @@ class DocxFormatDialog(QDialog):
         cl.addWidget(self._headings_group())
         cl.addWidget(self._body_group())
         cl.addWidget(self._images_group())
+        cl.addWidget(self._captions_group())
+        cl.addWidget(self._toc_group())
         cl.addWidget(self._page_group())
         cl.addWidget(self._ai_group())
         cl.addStretch(1)
@@ -142,6 +144,39 @@ class DocxFormatDialog(QDialog):
         f.addRow("", self.i_center)
         return g
 
+    def _captions_group(self) -> QGroupBox:
+        d = DocxFormatRules()
+        g = QGroupBox("Didascalie"); g.setCheckable(True); g.setChecked(d.format_captions)
+        self.g_captions = g
+        f = QFormLayout(g)
+        self.c_below = QCheckBox("Sposta la didascalia sotto l'immagine")
+        self.c_below.setChecked(d.caption_below_image)
+        self.c_size = self._spin(d.caption_size_pt, 6, 18, suffix=" pt")
+        self.c_italic = QCheckBox("Corsivo"); self.c_italic.setChecked(d.caption_italic)
+        self.c_center = QCheckBox("Centrata"); self.c_center.setChecked(d.caption_center)
+        f.addRow("", self.c_below)
+        f.addRow("Corpo", self.c_size)
+        f.addRow("", self.c_italic)
+        f.addRow("", self.c_center)
+        note = QLabel("Riconosce le didascalie dallo stile «Didascalia/Caption» "
+                      "o dal testo (Figura/Tabella N…).")
+        note.setObjectName("Subtitle"); note.setWordWrap(True)
+        f.addRow(note)
+        return g
+
+    def _toc_group(self) -> QGroupBox:
+        d = DocxFormatRules()
+        g = QGroupBox("Indice / Sommario"); g.setCheckable(True); g.setChecked(d.fix_toc)
+        self.g_toc = g
+        f = QVBoxLayout(g)
+        note = QLabel(
+            "Le voci dell'indice non vengono toccate dalla formattazione del corpo, "
+            "e Word aggiornerà l'indice (voci e numeri di pagina) all'apertura del documento."
+        )
+        note.setObjectName("Subtitle"); note.setWordWrap(True)
+        f.addWidget(note)
+        return g
+
     def _page_group(self) -> QGroupBox:
         d = DocxFormatRules()
         g = QGroupBox("Pagina e pulizia")
@@ -217,6 +252,12 @@ class DocxFormatDialog(QDialog):
             fit_images_to_page=self.g_images.isChecked() and self.i_fit.isChecked(),
             max_image_width_cm=self.i_max.value(),
             center_images=self.g_images.isChecked() and self.i_center.isChecked(),
+            format_captions=self.g_captions.isChecked(),
+            caption_below_image=self.c_below.isChecked(),
+            caption_size_pt=self.c_size.value(),
+            caption_italic=self.c_italic.isChecked(),
+            caption_center=self.c_center.isChecked(),
+            fix_toc=self.g_toc.isChecked(),
             remove_empty_paragraphs=self.p_empty.isChecked(),
             collapse_spaces=self.p_spaces.isChecked(),
             set_margins=self.p_margins.isChecked(),

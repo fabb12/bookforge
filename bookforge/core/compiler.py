@@ -35,11 +35,43 @@ def find_texstudio() -> str | None:
     return None
 
 
+def find_main_tex(folder: str | Path) -> Path | None:
+    """Trova il .tex principale di una cartella LaTeX.
+
+    Preferisce i nomi convenzionali (main/book/...), poi il primo .tex che
+    contiene `\\documentclass`, infine il primo .tex trovato.
+    """
+    folder = Path(folder)
+    if not folder.is_dir():
+        return None
+    tex_files = sorted(folder.glob("*.tex"))
+    if not tex_files:
+        return None
+    preferred = ("main.tex", "book.tex", "libro.tex", "tesi.tex", "thesis.tex")
+    by_name = {p.name.lower(): p for p in tex_files}
+    for name in preferred:
+        if name in by_name:
+            return by_name[name]
+    for p in tex_files:
+        try:
+            if "\\documentclass" in p.read_text(encoding="utf-8", errors="ignore"):
+                return p
+        except Exception:  # noqa: BLE001
+            continue
+    return tex_files[0]
+
+
 def open_in_texstudio(project: Project) -> tuple[bool, str]:
     tex_path = write_tex(project)
+    return open_tex_in_texstudio(tex_path)
+
+
+def open_tex_in_texstudio(tex_path: str | Path) -> tuple[bool, str]:
+    """Apre un qualsiasi file .tex (anche fuori da un progetto) in TeXstudio."""
+    tex_path = Path(tex_path)
     ts = find_texstudio()
     if not ts:
-        return False, ("TeXstudio non trovato. Il file .tex è stato salvato in:\n"
+        return False, ("TeXstudio non trovato. Il file .tex si trova in:\n"
                        f"{tex_path}\nAprilo manualmente in TeXstudio.")
     try:
         subprocess.Popen([ts, str(tex_path)])
@@ -51,7 +83,19 @@ def open_in_texstudio(project: Project) -> tuple[bool, str]:
 def compile_pdf(project: Project) -> tuple[bool, str]:
     """Compila il PDF con latexmk (se presente) o pdflatex. Restituisce (ok, log)."""
     tex_path = write_tex(project)
-    cwd = str(project.folder)
+    return compile_tex(tex_path)
+
+
+def compile_tex(tex_path: str | Path) -> tuple[bool, str]:
+    """Compila un file .tex arbitrario con latexmk (se presente) o pdflatex.
+
+    La compilazione avviene nella cartella del file, così funzionano i percorsi
+    relativi (immagini, capitoli inclusi con \\input, bibliografie, ...).
+    """
+    tex_path = Path(tex_path)
+    if not tex_path.exists():
+        return False, f"File .tex non trovato: {tex_path}"
+    cwd = str(tex_path.parent)
     latexmk = shutil.which("latexmk")
     try:
         if latexmk:
@@ -71,8 +115,7 @@ def compile_pdf(project: Project) -> tuple[bool, str]:
                     [pdflatex, "-interaction=nonstopmode", "-halt-on-error",
                      tex_path.name],
                     cwd=cwd, capture_output=True, text=True, timeout=300)
-        pdf = project.folder / (tex_path.stem + ".pdf")
-        ok = pdf.exists() and (r is None or r.returncode == 0 or pdf.exists())
+        pdf = tex_path.with_suffix(".pdf")
         log = (r.stdout[-4000:] if r else "") + (r.stderr[-2000:] if r else "")
         if pdf.exists():
             return True, f"PDF generato: {pdf}\n\n--- log ---\n{log}"
@@ -85,6 +128,12 @@ def compile_pdf(project: Project) -> tuple[bool, str]:
 
 def open_pdf(project: Project) -> tuple[bool, str]:
     pdf = project.folder / (project.tex_path.stem + ".pdf")
+    return open_pdf_path(pdf)
+
+
+def open_pdf_path(pdf: str | Path) -> tuple[bool, str]:
+    """Apre un PDF con l'applicazione predefinita del sistema."""
+    pdf = Path(pdf)
     if not pdf.exists():
         return False, "PDF non ancora generato. Compila prima il documento."
     try:

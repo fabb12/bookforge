@@ -35,6 +35,7 @@ class BookStyle:
     language: str = "italiano"
     person: str = "terza persona"
     extra_instructions: str = ""
+    style_prompt: str = ""              # prompt libero che sovrascrive il system prompt del Writer
     document_class: str = "book"        # book | article | report
     font_size: str = "11pt"
     paper: str = "a4paper"

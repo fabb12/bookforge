@@ -178,6 +178,23 @@ class MainWindow(QMainWindow):
         sform.addRow("Classe doc.", self.s_class)
         sform.addRow("Corpo", self.s_font)
         sform.addRow("Formato", self.s_paper)
+
+        self.s_prompt = QPlainTextEdit()
+        self.s_prompt.setPlaceholderText(
+            "Prompt di stile personalizzato (opzionale).\n"
+            "Se compilato, sostituisce il system prompt del Writer: i campi qui sopra "
+            "(Tono, Pubblico, Lingua, Persona, Istruzioni extra) verranno ignorati.\n"
+            "Puoi incollarlo a mano oppure caricarlo da un file con il pulsante qui sotto."
+        )
+        self.s_prompt.setMinimumHeight(160)
+        sform.addRow("Prompt stile", self.s_prompt)
+        prow = QHBoxLayout()
+        b_load = QPushButton("Carica da file…"); b_load.clicked.connect(self._load_style_prompt)
+        b_clear = QPushButton("Pulisci"); b_clear.clicked.connect(lambda: self.s_prompt.setPlainText(""))
+        prow.addWidget(b_load); prow.addWidget(b_clear); prow.addStretch(1)
+        pwrap = QWidget(); pwrap.setLayout(prow)
+        sform.addRow("", pwrap)
+
         tabs.addTab(style, "Stile")
 
         # --- motore AI ---
@@ -285,6 +302,7 @@ class MainWindow(QMainWindow):
         self.s_tone.setText(s.tone); self.s_audience.setText(s.audience)
         self.s_language.setText(s.language); self.s_person.setText(s.person)
         self.s_extra.setPlainText(s.extra_instructions)
+        self.s_prompt.setPlainText(s.style_prompt)
         self.s_class.setCurrentText(s.document_class)
         self.s_font.setCurrentText(s.font_size); self.s_paper.setCurrentText(s.paper)
 
@@ -298,10 +316,25 @@ class MainWindow(QMainWindow):
         s.tone = self.s_tone.text(); s.audience = self.s_audience.text()
         s.language = self.s_language.text(); s.person = self.s_person.text()
         s.extra_instructions = self.s_extra.toPlainText()
+        s.style_prompt = self.s_prompt.toPlainText()
         s.document_class = self.s_class.currentText()
         s.font_size = self.s_font.currentText(); s.paper = self.s_paper.currentText()
         self.setWindowTitle(f"BookForge — {b.title}")
         self.statusBar().showMessage("Dati libro/stile applicati.", 3000)
+
+    def _load_style_prompt(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Carica prompt di stile", "",
+            "Testo (*.txt *.md *.prompt);;Tutti i file (*)")
+        if not path:
+            return
+        try:
+            content = open(path, "r", encoding="utf-8").read()
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "Errore caricamento", str(e))
+            return
+        self.s_prompt.setPlainText(content)
+        self.statusBar().showMessage(f"Prompt di stile caricato da {path}", 4000)
 
     def _apply_engine(self):
         self.engine_config = EngineConfig(

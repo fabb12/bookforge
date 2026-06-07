@@ -21,6 +21,40 @@ DEFAULT_MODELS = {
     "google": "gemini-1.5-pro",
 }
 
+# modelli attualmente disponibili per provider, mostrati nel menu a tendina delle
+# impostazioni. La lista non è esaustiva: il campo resta editabile, così l'utente
+# può digitare un identificativo non in elenco. Il primo elemento è il consigliato.
+AVAILABLE_MODELS = {
+    "anthropic": [
+        "claude-opus-4-8",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5-20251001",
+    ],
+    "openai": [
+        "gpt-4o",
+        "gpt-4o-mini",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "o3",
+        "o4-mini",
+    ],
+    "google": [
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+    ],
+}
+
+
+def models_for(provider: str) -> list[str]:
+    """Elenco dei modelli noti per un provider (vuoto se sconosciuto)."""
+    return list(AVAILABLE_MODELS.get(provider, []))
+
+
+# quanti progetti recenti tenere in memoria
+MAX_RECENT_PROJECTS = 8
+
 
 def settings_path() -> Path:
     """Percorso del file di impostazioni (override via `BOOKFORGE_CONFIG`)."""
@@ -38,6 +72,7 @@ class AppSettings:
     api_keys: dict = field(default_factory=dict)   # provider -> chiave API
     temperature: float = 0.7
     max_tokens: int = 0                            # 0 = lascia il default del provider
+    recent_projects: list = field(default_factory=list)  # percorsi progetti recenti (più recente prima)
 
     # ---------- accesso comodo ----------
     def api_key_for(self, provider: str | None = None) -> str:
@@ -49,6 +84,20 @@ class AppSettings:
         else:
             self.api_keys.pop(provider, None)
 
+    # ---------- progetti recenti ----------
+    def add_recent_project(self, folder) -> None:
+        """Mette il progetto in cima alla lista dei recenti, senza duplicati."""
+        p = str(Path(folder).resolve())
+        recents = [str(x) for x in self.recent_projects if str(x) != p]
+        self.recent_projects = [p] + recents
+        del self.recent_projects[MAX_RECENT_PROJECTS:]
+
+    def clean_recent_projects(self) -> list:
+        """Filtra i recenti tenendo solo le cartelle che esistono ancora."""
+        self.recent_projects = [
+            str(x) for x in self.recent_projects if Path(x).exists()]
+        return self.recent_projects
+
     # ---------- serializzazione ----------
     def to_dict(self) -> dict:
         return asdict(self)
@@ -59,6 +108,8 @@ class AppSettings:
         data = {k: v for k, v in (d or {}).items() if k in known}
         if not isinstance(data.get("api_keys"), dict):
             data["api_keys"] = {}
+        if not isinstance(data.get("recent_projects"), list):
+            data["recent_projects"] = []
         return AppSettings(**data)
 
     # ---------- persistenza ----------

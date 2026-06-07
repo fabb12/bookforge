@@ -444,6 +444,38 @@ def build_engine(config: EngineConfig, force_offline: bool = False):
         return MockEngine(), False, f"Fallback offline ({e})."
 
 
+def autodraft_chapter(engine, book: Book, ch: Chapter,
+                      progress: Callable[[str], None] | None = None) -> Chapter:
+    """Autopilota: genera un capitolo con il minimo sforzo, mantenendo lo stile.
+
+    Se mancano i concetti, ne ricava prima una scaletta (così resta traccia) e
+    poi esegue l'intera pipeline. Lo stile è quello del prompt impostato sul libro.
+    """
+    def step(msg):
+        if progress:
+            progress(msg)
+    if not ch.raw_concepts.strip():
+        step("Ricavo una scaletta dal titolo…")
+        try:
+            ch.raw_concepts = engine.outline(book, ch)
+        except Exception:  # noqa: BLE001 - se fallisce, prosegui comunque
+            pass
+    return process_chapter(engine, book, ch, progress)
+
+
+def autodraft_book(engine, book: Book, only_empty: bool = True,
+                   progress: Callable[[str], None] | None = None) -> int:
+    """Autopilota su tutto il libro. Restituisce il numero di capitoli generati."""
+    done = 0
+    targets = [c for c in book.chapters if (not only_empty or not c.text.strip())]
+    for i, ch in enumerate(targets, 1):
+        if progress:
+            progress(f"[{i}/{len(targets)}] «{ch.title}»…")
+        autodraft_chapter(engine, book, ch, progress)
+        done += 1
+    return done
+
+
 def process_chapter(engine, book: Book, ch: Chapter,
                     progress: Callable[[str], None] | None = None) -> Chapter:
     """Pipeline completa su un singolo capitolo. Aggiorna ch in-place e lo restituisce."""

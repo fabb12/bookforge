@@ -96,11 +96,34 @@ class MainWindow(QMainWindow):
         mentor_btn.setMenu(mmenu)
         tb.addWidget(mentor_btn)
 
+        # menu autogenerazione (autopilota)
+        auto_btn = QToolButton()
+        auto_btn.setText("🚀 Autogenera")
+        auto_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        amenu = QMenu(auto_btn)
+        amenu.addAction("✨ Autogenera capitolo corrente", self._autogen_current)
+        amenu.addAction("📚 Autogenera capitoli vuoti", lambda: self._autogen_all(True))
+        amenu.addAction("♻ Rigenera TUTTI i capitoli", lambda: self._autogen_all(False))
+        auto_btn.setMenu(amenu)
+        tb.addWidget(auto_btn)
+
         tb.addSeparator()
         add("📄 Esporta .tex", self._export_tex)
         add("🛠 Compila PDF", self._compile_pdf)
         add("📖 Apri in TeXstudio", self._open_texstudio)
         add("👁 Apri PDF", self._open_pdf)
+
+        # menu export (Markdown / EPUB) + versioni
+        exp_btn = QToolButton()
+        exp_btn.setText("📤 Esporta")
+        exp_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        xmenu = QMenu(exp_btn)
+        xmenu.addAction("📝 Markdown (.md)", self._export_markdown)
+        xmenu.addAction("📖 EPUB (.epub)", self._export_epub)
+        exp_btn.setMenu(xmenu)
+        tb.addWidget(exp_btn)
+        add("🕓 Versioni", self._open_versions)
+
         tb.addSeparator()
         add("📂 File progetto", self._open_file_browser)
         add("📝 Sistema Word", self._open_docx_formatter)
@@ -208,6 +231,10 @@ class MainWindow(QMainWindow):
         self.s_tone = QLineEdit(); self.s_audience = QLineEdit()
         self.s_language = QLineEdit(); self.s_person = QLineEdit()
         self.s_extra = QPlainTextEdit(); self.s_extra.setMaximumHeight(80)
+        self.s_mode = QComboBox(); self.s_mode.addItems(["mentore", "bilanciata", "autopilota"])
+        self.s_mode.setToolTip(
+            "mentore: l'AI dà feedback, scrivi tu · bilanciata: generi con conferma · "
+            "autopilota: autogenerazione rapida mantenendo lo stile del prompt")
         self.s_class = QComboBox(); self.s_class.addItems(["book", "report", "article"])
         self.s_font = QComboBox(); self.s_font.addItems(["10pt", "11pt", "12pt"])
         self.s_paper = QComboBox(); self.s_paper.addItems(["a4paper", "a5paper", "letterpaper"])
@@ -216,6 +243,7 @@ class MainWindow(QMainWindow):
         sform.addRow("Lingua", self.s_language)
         sform.addRow("Persona", self.s_person)
         sform.addRow("Istruzioni extra", self.s_extra)
+        sform.addRow("Modalità di lavoro", self.s_mode)
         sform.addRow("Classe doc.", self.s_class)
         sform.addRow("Corpo", self.s_font)
         sform.addRow("Formato", self.s_paper)
@@ -344,6 +372,7 @@ class MainWindow(QMainWindow):
         self.s_language.setText(s.language); self.s_person.setText(s.person)
         self.s_extra.setPlainText(s.extra_instructions)
         self.s_prompt.setPlainText(s.style_prompt)
+        self.s_mode.setCurrentText(s.mode or "mentore")
         self.s_class.setCurrentText(s.document_class)
         self.s_font.setCurrentText(s.font_size); self.s_paper.setCurrentText(s.paper)
 
@@ -358,6 +387,7 @@ class MainWindow(QMainWindow):
         s.language = self.s_language.text(); s.person = self.s_person.text()
         s.extra_instructions = self.s_extra.toPlainText()
         s.style_prompt = self.s_prompt.toPlainText()
+        s.mode = self.s_mode.currentText()
         s.document_class = self.s_class.currentText()
         s.font_size = self.s_font.currentText(); s.paper = self.s_paper.currentText()
         self.setWindowTitle(f"BookForge — {b.title}")
@@ -517,6 +547,99 @@ class MainWindow(QMainWindow):
         self._run_chapter_ai("Riassunto",
                              lambda: self.engine.summarize(ch.text),
                              accept, original=ch.summary)
+
+    # ============================================================ autogenerazione (autopilota)
+    def _autogen_current(self):
+        if self.worker and self.worker.isRunning():
+            return
+        self._commit_current_editors(); self._commit_book_meta()
+        ch = self._current_chapter()
+        if not ch:
+            QMessageBox.information(self, "Autogenera", "Aggiungi prima un capitolo.")
+            return
+        self._start_autogen(chapter=ch)
+
+    def _autogen_all(self, only_empty: bool):
+        if self.worker and self.worker.isRunning():
+            return
+        self._commit_current_editors(); self._commit_book_meta()
+        if not self.book.chapters:
+            QMessageBox.information(self, "Autogenera", "Aggiungi prima dei capitoli.")
+            return
+        n = sum(1 for c in self.book.chapters if (not only_empty or not c.text.strip()))
+        if n == 0:
+            QMessageBox.information(self, "Autogenera", "Nessun capitolo da generare.")
+            return
+        msg = (f"Autogenerare {n} capitoli vuoti?" if only_empty
+               else f"Rigenerare TUTTI i {n} capitoli? Il testo esistente sarà sostituito.")
+        if QMessageBox.question(self, "Autogenera", msg) != QMessageBox.StandardButton.Yes:
+            return
+        # sicurezza: salva una versione prima di una generazione massiva
+        try:
+            from ..core import versioning
+            versioning.save_version(self.project.folder, self.book, "pre-autogenera")
+        except Exception:  # noqa: BLE001
+            pass
+        self._start_autogen(chapter=None, only_empty=only_empty)
+
+    def _start_autogen(self, chapter, only_empty: bool = True):
+        from .autogen_worker import AutogenWorker
+        self.progress.show()
+        self.progress_label.setText("Autopilota in corso…")
+        self.worker = AutogenWorker(self.engine, self.book, chapter, only_empty)
+        self.worker.progress.connect(self.progress_label.setText)
+        self.worker.finished_ok.connect(self._on_autogen_done)
+        self.worker.failed.connect(self._on_failed)
+        self.worker.start()
+
+    def _on_autogen_done(self, n: int):
+        self.progress.hide()
+        self.progress_label.setText(f"Autogenerati {n} capitolo/i ✓")
+        self._on_chapter_selected(self.chapter_list.currentRow())
+        self._refresh_chapter_list()
+        self.tabs.setCurrentIndex(1)
+        self._save(silent=True)
+
+    # ============================================================ export / versioni
+    def _export_markdown(self):
+        self._save(silent=True)
+        from ..core import export
+        path = self.project.folder / (self._safe_stem() + ".md")
+        export.write_markdown(self.book, path)
+        self.statusBar().showMessage(f"Markdown esportato: {path}", 5000)
+        QMessageBox.information(self, "Esportato", f"Markdown salvato in:\n{path}")
+
+    def _export_epub(self):
+        self._save(silent=True)
+        from ..core import export
+        path = self.project.folder / (self._safe_stem() + ".epub")
+        try:
+            export.build_epub(self.book, path)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "EPUB", f"Esportazione fallita:\n{e}")
+            return
+        self.statusBar().showMessage(f"EPUB esportato: {path}", 5000)
+        QMessageBox.information(self, "Esportato", f"EPUB salvato in:\n{path}")
+
+    def _safe_stem(self) -> str:
+        import re
+        s = re.sub(r"[^A-Za-z0-9_-]+", "_", self.book.title).strip("_")
+        return s or "libro"
+
+    def _open_versions(self):
+        self._save(silent=True)
+        from .versions_dialog import VersionsDialog
+
+        def restore(book):
+            self.project.book = book
+            self.book = book
+            self._refresh_chapter_list()
+            self._load_book_meta()
+            if self.book.chapters:
+                self.chapter_list.setCurrentRow(0)
+            self._save(silent=True)
+
+        VersionsDialog(self, self.project, on_restore=restore).exec()
 
     # ============================================================ mentore/crescita/rigore
     def _open_mentor(self):

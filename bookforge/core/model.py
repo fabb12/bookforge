@@ -37,6 +37,7 @@ class BookStyle:
     person: str = "terza persona"
     extra_instructions: str = ""
     style_prompt: str = ""              # prompt libero che sovrascrive il system prompt del Writer
+    mode: str = "mentore"               # mentore | bilanciata | autopilota (scelta dell'utente)
     document_class: str = "book"        # book | article | report
     font_size: str = "11pt"
     paper: str = "a4paper"

@@ -94,6 +94,35 @@ riscrive al posto tuo.
 > scrittura, non come sostituto dell'autore. Ogni proposta dell'AI passa da
 > un'anteprima e da una tua conferma.
 
+### Modalità di lavoro — la scelta è tua
+Nella scheda **Stile** puoi impostare la **Modalità di lavoro**:
+
+- **🎓 mentore** — l'AI dà feedback e strumenti, scrivi tu (default).
+- **⚖️ bilanciata** — generi con un clic, ma con anteprima/conferma.
+- **🚀 autopilota** — autogenerazione rapida con il minimo sforzo, **mantenendo lo
+  stile del tuo prompt**.
+
+Il menu **🚀 Autogenera** offre: *capitolo corrente*, *capitoli vuoti*, *rigenera tutti*.
+Se un capitolo non ha concetti, l'autopilota ne ricava prima una scaletta dal titolo.
+Prima di una generazione massiva viene salvata automaticamente una versione di sicurezza.
+
+### Versioni ed export
+- **🕓 Versioni** — salva istantanee dell'opera, confronta le differenze (diff per
+  capitolo) e **ripristina** una versione precedente (con backup automatico prima del
+  ripristino). Le versioni vivono in `.bookforge_versions/`.
+- **📤 Esporta** — oltre a LaTeX/PDF/Word, esporta in **Markdown** e **EPUB** (EPUB via
+  `pandoc` se installato, altrimenti con un writer interno senza dipendenze).
+
+## Test
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+I test coprono la logica core (analisi, struttura, bibliografia, progressi, versioning,
+export, diagrammi, LaTeX, modello), il motore offline e la sistemazione `.docx`.
+
 ---
 
 ## Le modalità di avvio
@@ -193,6 +222,8 @@ bookforge/
     structure.py             mappa dell'argomentazione (tesi/argomenti/prove/obiezioni)
     biblio.py                gestione bibliografia BibTeX (references.bib)
     progress.py              istantanee delle metriche nel tempo (progress.json)
+    versioning.py            versioni dell'opera (.bookforge_versions) + diff
+    export.py                export Markdown ed EPUB (pandoc o writer interno)
   agents/
     engine.py                agenti datapizza-ai + comandi AI (edit/diagram/caption/mentore) + fallback
     commands.py              registro dei comandi di scrittura assistita (menu ↔ engine)
@@ -208,7 +239,10 @@ bookforge/
     metrics_dialog.py        Dashboard di crescita (metriche + istantanee)
     argument_dialog.py       editor della mappa dell'argomentazione
     biblio_dialog.py         gestione bibliografia + inserimento \cite
+    versions_dialog.py       versioni dell'opera: salva/diff/ripristina
     worker.py                QThread per la generazione non bloccante
+    autogen_worker.py        QThread per l'autogenerazione (autopilota)
     docx_worker.py           QThread per la formattazione .docx
     theme.py                 tema dark (QSS)
+tests/                       suite pytest della logica core + motore offline
 ```

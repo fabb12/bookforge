@@ -96,6 +96,11 @@ class LatexBrowserWindow(QMainWindow):
         rlay.addWidget(self.editor)
         splitter.addWidget(right)
 
+        # evidenziazione sintassi LaTeX (attivata solo sui file .tex-like)
+        from .latex_highlighter import LatexHighlighter
+        self._latex_hl = LatexHighlighter(self.editor.document())
+        self._latex_hl.setDocument(None)
+
         # menu contestuale di scrittura assistita
         from .ai_menu import AiEditingController
         self._ai = AiEditingController(
@@ -181,6 +186,9 @@ class LatexBrowserWindow(QMainWindow):
         self.editor.setEnabled(True)
         self.current_path = path
         self._dirty = False
+        # evidenzia la sintassi solo sui file LaTeX
+        tex_like = suffix in {".tex", ".sty", ".cls", ".tikz", ".def", ".clo", ".bbl"}
+        self._latex_hl.setDocument(self.editor.document() if tex_like else None)
         self._update_title()
 
     @staticmethod
@@ -299,6 +307,9 @@ class LatexBrowserWindow(QMainWindow):
         candidates.extend(sorted(self.folder.glob("*.pdf")))
         for pdf in candidates:
             if pdf.exists():
+                from .pdf_view import show_pdf
+                if show_pdf(self, pdf):
+                    return
                 ok, msg = compiler.open_pdf_path(pdf)
                 if not ok:
                     QMessageBox.warning(self, "PDF", msg)

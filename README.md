@@ -107,11 +107,18 @@ Se un capitolo non ha concetti, l'autopilota ne ricava prima una scaletta dal ti
 Prima di una generazione massiva viene salvata automaticamente una versione di sicurezza.
 
 ### Versioni ed export
-- **🕓 Versioni** — salva istantanee dell'opera, confronta le differenze (diff per
-  capitolo) e **ripristina** una versione precedente (con backup automatico prima del
-  ripristino). Le versioni vivono in `.bookforge_versions/`.
+- **🕓 Versioni** — salva istantanee dell'opera, **confronta le differenze con un diff
+  visuale colorato** (verde = aggiunto, rosso = rimosso) per capitolo, con riepilogo
+  righe aggiunte/rimosse, e **ripristina** una versione precedente (con backup
+  automatico prima del ripristino). Le versioni vivono in `.bookforge_versions/`.
 - **📤 Esporta** — oltre a LaTeX/PDF/Word, esporta in **Markdown** e **EPUB** (EPUB via
   `pandoc` se installato, altrimenti con un writer interno senza dipendenze).
+
+### Editor ed anteprima
+- **Evidenziazione sintassi LaTeX** nell'editor LaTeX e nei file `.tex` aperti dal
+  browser di progetto (comandi, ambienti, argomenti, matematica, commenti).
+- **Anteprima PDF integrata** (👁 Apri PDF): se è disponibile QtPdf il PDF si apre in una
+  finestra interna con zoom; altrimenti ripiega sull'app di sistema.
 
 ## Test
 
@@ -239,7 +246,9 @@ bookforge/
     metrics_dialog.py        Dashboard di crescita (metriche + istantanee)
     argument_dialog.py       editor della mappa dell'argomentazione
     biblio_dialog.py         gestione bibliografia + inserimento \cite
-    versions_dialog.py       versioni dell'opera: salva/diff/ripristina
+    versions_dialog.py       versioni dell'opera: salva/diff colorato/ripristina
+    latex_highlighter.py     evidenziazione sintassi LaTeX (QSyntaxHighlighter)
+    pdf_view.py              anteprima PDF integrata (QtPdf) con fallback esterno
     worker.py                QThread per la generazione non bloccante
     autogen_worker.py        QThread per l'autogenerazione (autopilota)
     docx_worker.py           QThread per la formattazione .docx

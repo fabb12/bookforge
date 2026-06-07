@@ -65,16 +65,17 @@ def load_version_book(path: str | Path) -> Book:
     return Book.from_dict(data.get("book", data))
 
 
+def _blocks(b: Book) -> dict[str, str]:
+    d = {"§ metadati": f"Titolo: {b.title}\nAutore: {b.author}\n"
+                        f"Sottotitolo: {b.subtitle}\nPrefazione:\n{b.preface}"}
+    for i, c in enumerate(b.chapters, 1):
+        d[f"{i}. {c.title}"] = c.text or c.latex or ""
+    return d
+
+
 def diff_books(old: Book, new: Book) -> str:
     """Diff unificato per capitolo (titolo + testo) tra due versioni del libro."""
-    def blocks(b: Book) -> dict[str, str]:
-        d = {"§ metadati": f"Titolo: {b.title}\nAutore: {b.author}\n"
-                            f"Sottotitolo: {b.subtitle}\nPrefazione:\n{b.preface}"}
-        for i, c in enumerate(b.chapters, 1):
-            d[f"{i}. {c.title}"] = c.text or c.latex or ""
-        return d
-
-    old_b, new_b = blocks(old), blocks(new)
+    old_b, new_b = _blocks(old), _blocks(new)
     keys = list(dict.fromkeys(list(old_b) + list(new_b)))
     chunks: list[str] = []
     for k in keys:
@@ -86,3 +87,61 @@ def diff_books(old: Book, new: Book) -> str:
                                     tofile=f"nuova/{k}", lineterm="")
         chunks.append("\n".join(diff))
     return "\n\n".join(chunks).strip() or "Nessuna differenza nei contenuti."
+
+
+def diff_stats(old: Book, new: Book) -> dict:
+    """Conteggio aggregato di righe aggiunte/rimosse e blocchi cambiati."""
+    old_b, new_b = _blocks(old), _blocks(new)
+    keys = list(dict.fromkeys(list(old_b) + list(new_b)))
+    added = removed = changed = 0
+    for k in keys:
+        a = old_b.get(k, "").splitlines()
+        b = new_b.get(k, "").splitlines()
+        if a == b:
+            continue
+        changed += 1
+        for line in difflib.unified_diff(a, b, lineterm=""):
+            if line.startswith("+") and not line.startswith("+++"):
+                added += 1
+            elif line.startswith("-") and not line.startswith("---"):
+                removed += 1
+    return {"added": added, "removed": removed, "changed_blocks": changed}
+
+
+def diff_html(old: Book, new: Book) -> str:
+    """Diff visuale colorato (HTML): verde = aggiunto, rosso = rimosso."""
+    from html import escape
+    old_b, new_b = _blocks(old), _blocks(new)
+    keys = list(dict.fromkeys(list(old_b) + list(new_b)))
+    parts: list[str] = [
+        "<div style='font-family:monospace; white-space:pre-wrap; font-size:10pt'>"]
+    any_change = False
+    for k in keys:
+        a = old_b.get(k, "").splitlines()
+        b = new_b.get(k, "").splitlines()
+        if a == b:
+            continue
+        any_change = True
+        status = ("nuovo" if k not in old_b else
+                  "rimosso" if k not in new_b else "modificato")
+        parts.append(f"<div style='margin-top:10px; color:#7aa2f7'>"
+                     f"<b>▾ {escape(k)}</b> <span style='color:#888'>({status})</span></div>")
+        for line in difflib.unified_diff(a, b, lineterm=""):
+            if line.startswith("+++") or line.startswith("---"):
+                continue
+            esc = escape(line)
+            if line.startswith("@@"):
+                parts.append(f"<span style='color:#888'>{esc}</span>")
+            elif line.startswith("+"):
+                parts.append(
+                    f"<span style='background:#13311a; color:#9ece6a'>{esc}</span>")
+            elif line.startswith("-"):
+                parts.append(
+                    f"<span style='background:#3b1219; color:#f7768e'>{esc}</span>")
+            else:
+                parts.append(f"<span style='color:#c0c0c0'>{esc}</span>")
+        parts.append("")
+    if not any_change:
+        parts.append("<i>Nessuna differenza nei contenuti.</i>")
+    parts.append("</div>")
+    return "\n".join(parts)

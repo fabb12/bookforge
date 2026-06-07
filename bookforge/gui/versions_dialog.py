@@ -1,10 +1,9 @@
 """Versioning dell'opera: salva istantanee, confronta (diff) e ripristina."""
 from __future__ import annotations
 
-from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QPushButton, QPlainTextEdit, QInputDialog, QMessageBox,
+    QPushButton, QTextBrowser, QInputDialog, QMessageBox,
 )
 
 from ..core import versioning
@@ -26,11 +25,14 @@ class VersionsDialog(QDialog):
         lay = QVBoxLayout(self)
         lay.addWidget(QLabel("Istantanee salvate (la più recente in alto):"))
         body = QHBoxLayout(); lay.addLayout(body, 1)
+        left = QVBoxLayout()
         self.list = QListWidget()
         self.list.currentRowChanged.connect(self._show_diff)
-        body.addWidget(self.list, 1)
-        self.diff = QPlainTextEdit(); self.diff.setReadOnly(True)
-        self.diff.setFont(QFont("monospace", 10))
+        left.addWidget(self.list)
+        self.stats = QLabel(""); self.stats.setObjectName("Subtitle"); self.stats.setWordWrap(True)
+        left.addWidget(self.stats)
+        body.addLayout(left, 1)
+        self.diff = QTextBrowser()
         body.addWidget(self.diff, 2)
 
         row = QHBoxLayout()
@@ -57,9 +59,15 @@ class VersionsDialog(QDialog):
         try:
             old = versioning.load_version_book(self.versions[row].path)
         except Exception as e:  # noqa: BLE001
-            self.diff.setPlainText(f"Impossibile leggere la versione: {e}")
+            self.diff.setHtml(f"<i>Impossibile leggere la versione: {e}</i>")
+            self.stats.setText("")
             return
-        self.diff.setPlainText(versioning.diff_books(old, self.project.book))
+        self.diff.setHtml(versioning.diff_html(old, self.project.book))
+        s = versioning.diff_stats(old, self.project.book)
+        self.stats.setText(
+            f"Confronto: questa versione → stato attuale\n"
+            f"➕ {s['added']} righe · ➖ {s['removed']} righe · "
+            f"{s['changed_blocks']} sezioni cambiate")
 
     def _save(self):
         label, ok = QInputDialog.getText(self, "Salva versione",

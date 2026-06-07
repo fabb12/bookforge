@@ -178,6 +178,10 @@ class MainWindow(QMainWindow):
         self.latex_edit = QPlainTextEdit()
         self.tabs.addTab(self.latex_edit, "3 · LaTeX")
 
+        # evidenziazione sintassi LaTeX sulla scheda 3
+        from .latex_highlighter import attach_latex_highlighter
+        self._latex_hl = attach_latex_highlighter(self.latex_edit)
+
         # scrittura assistita dall'AI sul testo e sul LaTeX (tasto destro → 🤖 AI)
         from .ai_menu import AiEditingController
         self._ai_text = AiEditingController(
@@ -711,7 +715,15 @@ class MainWindow(QMainWindow):
         (QMessageBox.information if ok else QMessageBox.warning)(self, "TeXstudio", msg)
 
     def _open_pdf(self):
-        ok, msg = compiler.open_pdf(self.project)
+        pdf = self.project.folder / (self.project.tex_path.stem + ".pdf")
+        if not pdf.exists():
+            QMessageBox.information(self, "PDF",
+                                   "PDF non ancora generato. Compila prima il documento.")
+            return
+        from .pdf_view import show_pdf
+        if show_pdf(self, pdf):
+            return
+        ok, msg = compiler.open_pdf(self.project)   # fallback: app di sistema
         if not ok:
             QMessageBox.warning(self, "PDF", msg)
 

@@ -89,6 +89,19 @@ def test_versioning_save_list_diff(tmp_path):
     assert "Modificato" in d and "Originale" in d
 
 
+def test_versioning_diff_html_and_stats():
+    old = Book(title="T")
+    old.add_chapter("C1").text = "riga uno\nriga due"
+    new = Book(title="T")
+    new.add_chapter("C1").text = "riga uno\nriga due modificata\nriga tre"
+    html = versioning.diff_html(old, new)
+    assert "background" in html and "riga tre" in html  # righe colorate
+    stats = versioning.diff_stats(old, new)
+    assert stats["added"] >= 2 and stats["removed"] >= 1 and stats["changed_blocks"] == 1
+    # nessuna differenza → stats a zero
+    assert versioning.diff_stats(old, old) == {"added": 0, "removed": 0, "changed_blocks": 0}
+
+
 # --------------------------------------------------------------- export
 def test_markdown_export_contains_chapters():
     b = Book(title="Titolo", author="Aut")

@@ -75,7 +75,8 @@ def _epub_via_pandoc(book: Book, path: Path) -> Path:
     cmd = ["pandoc", "-f", "markdown", "-o", str(path),
            "--metadata", f"title={book.title}",
            "--metadata", f"author={book.author}"]
-    subprocess.run(cmd, input=md, text=True, capture_output=True, timeout=120, check=True)
+    subprocess.run(cmd, input=md, text=True, encoding="utf-8", errors="replace",
+                   capture_output=True, timeout=120, check=True)
     if not path.exists():
         raise RuntimeError("pandoc non ha prodotto l'EPUB")
     return path

@@ -102,7 +102,8 @@ def compile_tex(tex_path: str | Path) -> tuple[bool, str]:
             r = subprocess.run(
                 [latexmk, "-pdf", "-f", "-interaction=nonstopmode",
                  tex_path.name],
-                cwd=cwd, capture_output=True, text=True, timeout=300)
+                cwd=cwd, capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=300)
         else:
             pdflatex = shutil.which("pdflatex")
             if not pdflatex:
@@ -114,7 +115,8 @@ def compile_tex(tex_path: str | Path) -> tuple[bool, str]:
                 r = subprocess.run(
                     [pdflatex, "-interaction=nonstopmode", "-halt-on-error",
                      tex_path.name],
-                    cwd=cwd, capture_output=True, text=True, timeout=300)
+                    cwd=cwd, capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=300)
         pdf = tex_path.with_suffix(".pdf")
         log = (r.stdout[-4000:] if r else "") + (r.stderr[-2000:] if r else "")
         if pdf.exists():

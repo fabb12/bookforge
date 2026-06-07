@@ -143,25 +143,76 @@ class StartupDialog(QDialog):
         self.latex_folder = Path(d)
         self.accept()
 
-    # ---------------- STRUMENTI (senza progetto) ----------------
+    # ---------------- STRUMENTI (senza aprire un progetto) ----------------
     def _tools_box(self) -> QWidget:
         box = QGroupBox("Strumenti")
         lay = QVBoxLayout(box)
-        info = QLabel("Formatta, impagina e correggi un documento Word (.docx) "
-                      "senza aprire alcun progetto.")
+        info = QLabel("Converti un progetto LaTeX esistente, sistema un documento "
+                      "Word o gestisci le API dei modelli — senza aprire un progetto.")
         info.setObjectName("Subtitle"); info.setWordWrap(True)
         lay.addWidget(info)
-        btn = QPushButton("📝 Sistema documento Word…")
-        btn.clicked.connect(self._do_word_tool)
-        lay.addWidget(btn)
+
+        b_latex = QPushButton("📥 Converti progetto LaTeX in progetto BookForge…")
+        b_latex.clicked.connect(self._do_convert_latex)
+        lay.addWidget(b_latex)
+
+        b_word_pdf = QPushButton("📝 Sistema Word → LaTeX → PDF…")
+        b_word_pdf.clicked.connect(self._do_word_pdf)
+        lay.addWidget(b_word_pdf)
+
+        b_word = QPushButton("🧾 Formatta documento Word (.docx)…")
+        b_word.clicked.connect(self._do_word_tool)
+        lay.addWidget(b_word)
+
+        b_settings = QPushButton("⚙ Impostazioni — API e modelli LLM…")
+        b_settings.clicked.connect(self._do_settings)
+        lay.addWidget(b_settings)
         return box
+
+    def _build_engine(self):
+        """Costruisce il motore dalle impostazioni persistenti (per i tool senza progetto)."""
+        from ..agents.engine import EngineConfig, build_engine
+        from ..core.settings import AppSettings
+        return build_engine(EngineConfig.from_settings(AppSettings.load()))
+
+    def _do_convert_latex(self):
+        # converte una cartella LaTeX e apre subito il nuovo progetto BookForge
+        from ..core.latex_import import convert_latex_to_project
+        src = QFileDialog.getExistingDirectory(
+            self, "Scegli la cartella del progetto LaTeX da convertire")
+        if not src:
+            return
+        dest = QFileDialog.getExistingDirectory(
+            self, "Scegli dove salvare il nuovo progetto BookForge")
+        if not dest:
+            return
+        try:
+            project = convert_latex_to_project(src, dest)
+        except FileNotFoundError as e:
+            QMessageBox.warning(self, "Nessun LaTeX", str(e))
+            return
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "Conversione fallita", str(e))
+            return
+        n = len(project.book.chapters)
+        QMessageBox.information(
+            self, "Progetto creato",
+            f"Convertiti {n} capitoli in:\n{project.folder}")
+        self.project = project
+        self.accept()
+
+    def _do_word_pdf(self):
+        from .word_pdf_dialog import WordToPdfDialog
+        engine, engine_real, _ = self._build_engine()
+        WordToPdfDialog(self, engine=engine, engine_real=engine_real).exec()
+
+    def _do_settings(self):
+        from .settings_dialog import SettingsDialog
+        SettingsDialog(self).exec()
 
     def _do_word_tool(self):
         # apre il formattatore Word come dialog modale, senza chiudere l'avvio
         from .docx_dialog import DocxFormatDialog
-        from ..agents.engine import EngineConfig, build_engine
-        from ..core.settings import AppSettings
-        engine, engine_real, _ = build_engine(
-            EngineConfig.from_settings(AppSettings.load()))
+        engine, engine_real, _ = self._build_engine()
         dlg = DocxFormatDialog(self, engine=engine, engine_real=engine_real)
         dlg.exec()

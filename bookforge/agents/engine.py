@@ -117,6 +117,21 @@ OUTLINE_PROMPT = (
     "Restituisci SOLO l'elenco, un punto per riga, senza numeri, trattini o commenti."
 )
 
+TRANSITIONS_PROMPT = (
+    "Sei un editor che cura la coesione di un capitolo. Ricevi il testo completo del "
+    "capitolo e ne migliori i RACCORDI tra paragrafi e sezioni: aggiungi o riscrivi le "
+    "frasi di transizione perché il discorso scorra senza salti logici. NON cambiare i "
+    "contenuti, i fatti o lo stile, non aggiungere o togliere sezioni. Restituisci SOLO "
+    "il testo del capitolo revisionato, senza commenti né intestazioni."
+)
+
+BRIDGE_PROMPT = (
+    "Sei un autore. Scrivi UN solo paragrafo breve di raccordo che colleghi il capitolo "
+    "corrente al capitolo {dove} del libro, in modo fluido e coerente con lo stile. "
+    "Usa i riassunti forniti come contesto. Restituisci SOLO il paragrafo, senza "
+    "intestazioni né virgolette."
+)
+
 # --- generazione di diagrammi (come codice) ---
 TIKZ_PROMPT = (
     "Sei un esperto di TikZ/LaTeX. Data una descrizione, genera SOLO il codice di un "
@@ -208,6 +223,25 @@ class DatapizzaEngine:
                 f"Eventuali concetti già annotati:\n{ch.raw_concepts or '(nessuno)'}")
         return a.run(task).text.strip()
 
+    def transitions(self, book: Book, text: str) -> str:
+        a = self._agent("transitions", TRANSITIONS_PROMPT)
+        return a.run(text).text.strip()
+
+    def bridge(self, book: Book, ch: Chapter, where: str = "next") -> str:
+        prev, nxt = book.neighbors(ch.id)
+        if where == "prev":
+            neighbor, dove = prev, "PRECEDENTE"
+        else:
+            neighbor, dove = nxt, "SUCCESSIVO"
+        if neighbor is None:
+            return ""
+        a = self._agent("bridge", BRIDGE_PROMPT.format(dove=dove.lower()))
+        task = (f"Capitolo corrente «{ch.title}» — riassunto: "
+                f"{ch.summary or '(nessun riassunto)'}\n"
+                f"Capitolo {dove} «{neighbor.title}» — riassunto: "
+                f"{neighbor.summary or '(nessun riassunto)'}")
+        return _strip_code_fences(a.run(task).text.strip())
+
     # -- diagrammi (come codice) ------------------------------------------
     def generate_diagram(self, description: str, kind: str = "tikz",
                          book: Book | None = None) -> str:
@@ -272,6 +306,18 @@ class MockEngine:
             base = ["Introduzione all'argomento", "Concetti chiave",
                     "Esempi e applicazioni", "Implicazioni", "Sintesi"]
         return "\n".join(base[:8])
+
+    def transitions(self, book: Book, text: str) -> str:
+        return text  # offline: nessuna modifica ai raccordi
+
+    def bridge(self, book: Book, ch: Chapter, where: str = "next") -> str:
+        prev, nxt = book.neighbors(ch.id)
+        neighbor = prev if where == "prev" else nxt
+        if neighbor is None:
+            return ""
+        verso = "quanto visto in" if where == "prev" else "quanto vedremo in"
+        return (f"Prima di proseguire, conviene collegare questo capitolo a "
+                f"{verso} «{neighbor.title}», così da non perdere il filo del discorso.")
 
     def generate_diagram(self, description: str, kind: str = "tikz",
                          book: Book | None = None) -> str:

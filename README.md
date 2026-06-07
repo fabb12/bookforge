@@ -61,6 +61,17 @@ offre comandi sulla selezione e strumenti di generazione:
 - **Genera immagine**: l'AI scrive il prompt, **Google Imagen** genera l'immagine in
   `images/`, e viene inserita con `\includegraphics` e **didascalia generata** sotto.
 
+Nella finestra principale, il menu **🧠 Capitolo (AI)** offre comandi sull'intero
+capitolo corrente (anche questi con anteprima Accetta/Rifiuta/Rigenera):
+
+- **Genera scaletta** — produce una scaletta puntata dal titolo e dai concetti, e la
+  inserisce nella scheda «Concetti».
+- **Migliora raccordi** — rivede le transizioni tra paragrafi/sezioni del testo senza
+  cambiarne i contenuti.
+- **Ponte col capitolo precedente / successivo** — genera un paragrafo di raccordo che
+  collega il capitolo a quello adiacente, usando i riassunti (risparmio di token).
+- **Rigenera riassunto** — riscrive il riassunto del capitolo nella scheda «Riassunto».
+
 ---
 
 ## Le modalità di avvio

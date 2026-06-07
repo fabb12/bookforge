@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QListWidget,
     QListWidgetItem, QPushButton, QLabel, QLineEdit, QTextEdit, QPlainTextEdit,
     QTabWidget, QFormLayout, QComboBox, QGroupBox, QMessageBox, QProgressBar,
-    QInputDialog, QFileDialog,
+    QInputDialog, QFileDialog, QToolButton, QMenu, QProgressDialog,
 )
 
 from ..core.model import Project, Chapter
@@ -68,6 +68,22 @@ class MainWindow(QMainWindow):
 
         add("💾 Salva", self._save)
         add("🧩 Genera capitolo", self._generate_current, primary=True)
+
+        # menu dei comandi AI a livello di capitolo
+        chap_btn = QToolButton()
+        chap_btn.setText("🧠 Capitolo (AI)")
+        chap_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        menu = QMenu(chap_btn)
+        menu.addAction("📋 Genera scaletta", self._chapter_outline)
+        menu.addAction("🔗 Migliora raccordi", self._chapter_transitions)
+        menu.addAction("⬅ Ponte col capitolo precedente",
+                       lambda: self._chapter_bridge("prev"))
+        menu.addAction("➡ Ponte col capitolo successivo",
+                       lambda: self._chapter_bridge("next"))
+        menu.addAction("📝 Rigenera riassunto", self._chapter_resummarize)
+        chap_btn.setMenu(menu)
+        tb.addWidget(chap_btn)
+
         tb.addSeparator()
         add("📄 Esporta .tex", self._export_tex)
         add("🛠 Compila PDF", self._compile_pdf)
@@ -393,6 +409,102 @@ class MainWindow(QMainWindow):
         self.progress.hide()
         self.progress_label.setText("")
         QMessageBox.critical(self, "Errore generazione", err)
+
+    # ============================================================ comandi AI capitolo
+    def _run_chapter_ai(self, label, fn, on_accept, original=""):
+        """Esegue una funzione AI off-thread, mostra l'anteprima e applica se accettata."""
+        from .ai_worker import AiWorker
+        from .ai_preview import AiPreviewDialog
+        if getattr(self, "_chap_worker", None) and self._chap_worker.isRunning():
+            return
+        busy = QProgressDialog(label, None, 0, 0, self)
+        busy.setWindowTitle("AI"); busy.setCancelButton(None)
+        busy.setMinimumDuration(0); busy.show()
+
+        def done(result):
+            busy.close()
+            text = str(result).strip()
+            if not text:
+                QMessageBox.information(self, label, "Nessun risultato.")
+                return
+            dlg = AiPreviewDialog(self, f"AI — {label}", original=original, proposed=text)
+            dlg.exec()
+            if dlg.action == "accept":
+                on_accept(dlg.result_text)
+            elif dlg.action == "regenerate":
+                self._run_chapter_ai(label, fn, on_accept, original)
+
+        def fail(err):
+            busy.close()
+            QMessageBox.critical(self, "Errore AI", err)
+
+        self._chap_worker = AiWorker(fn)
+        self._chap_worker.done.connect(done)
+        self._chap_worker.failed.connect(fail)
+        self._chap_worker.start()
+
+    def _chapter_outline(self):
+        self._commit_current_editors()
+        ch = self._current_chapter()
+        if not ch:
+            return
+        def accept(text):
+            self.concepts_edit.setPlainText(text)
+            self.tabs.setCurrentIndex(0)
+        self._run_chapter_ai("Scaletta",
+                             lambda: self.engine.outline(self.book, ch),
+                             accept, original=ch.raw_concepts)
+
+    def _chapter_transitions(self):
+        self._commit_current_editors()
+        ch = self._current_chapter()
+        if not ch:
+            return
+        if not ch.text.strip():
+            QMessageBox.information(self, "Raccordi",
+                                   "Genera prima il testo del capitolo.")
+            return
+        def accept(text):
+            self.text_edit.setPlainText(text)
+            self.tabs.setCurrentIndex(1)
+        self._run_chapter_ai("Raccordi",
+                             lambda: self.engine.transitions(self.book, ch.text),
+                             accept, original=ch.text)
+
+    def _chapter_bridge(self, where: str):
+        self._commit_current_editors()
+        ch = self._current_chapter()
+        if not ch:
+            return
+        prev, nxt = self.book.neighbors(ch.id)
+        if (where == "prev" and prev is None) or (where == "next" and nxt is None):
+            QMessageBox.information(self, "Ponte",
+                                   "Non c'è un capitolo " +
+                                   ("precedente." if where == "prev" else "successivo."))
+            return
+        def accept(text):
+            cur = self.text_edit.toPlainText()
+            self.text_edit.setPlainText(
+                (text + "\n\n" + cur) if where == "prev" else (cur + "\n\n" + text))
+            self.tabs.setCurrentIndex(1)
+        self._run_chapter_ai("Ponte",
+                             lambda: self.engine.bridge(self.book, ch, where), accept)
+
+    def _chapter_resummarize(self):
+        self._commit_current_editors()
+        ch = self._current_chapter()
+        if not ch:
+            return
+        if not ch.text.strip():
+            QMessageBox.information(self, "Riassunto",
+                                   "Genera prima il testo del capitolo.")
+            return
+        def accept(text):
+            self.summary_edit.setPlainText(text)
+            self.tabs.setCurrentIndex(3)
+        self._run_chapter_ai("Riassunto",
+                             lambda: self.engine.summarize(ch.text),
+                             accept, original=ch.summary)
 
     # ============================================================ salvataggio/output
     def _save(self, silent: bool = False):

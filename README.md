@@ -120,6 +120,15 @@ Prima di una generazione massiva viene salvata automaticamente una versione di s
 - **Anteprima PDF integrata** (👁 Apri PDF): se è disponibile QtPdf il PDF si apre in una
   finestra interna con zoom; altrimenti ripiega sull'app di sistema.
 
+## Documentazione
+
+- **[docs/MANUALE.md](docs/MANUALE.md)** — manuale d'uso completo (installazione,
+  configurazione, flusso di lavoro, tutte le funzioni).
+- **[docs/ARCHITETTURA.md](docs/ARCHITETTURA.md)** — architettura tecnica (strati,
+  modello dati, pipeline, motore AI, decisioni di progetto, estensibilità).
+- **[CLAUDE.md](CLAUDE.md)** + **`.claude/`** — contesto sintetico per gli agenti AI
+  (regole, codemap, convenzioni) per sessioni di sviluppo più efficienti.
+
 ## Test
 
 ```bash

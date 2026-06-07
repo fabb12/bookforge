@@ -127,6 +127,16 @@ class MainWindow(QMainWindow):
         self.latex_edit = QPlainTextEdit()
         self.tabs.addTab(self.latex_edit, "3 · LaTeX")
 
+        # scrittura assistita dall'AI sul testo e sul LaTeX (tasto destro → 🤖 AI)
+        from .ai_menu import AiEditingController
+        self._ai_text = AiEditingController(
+            self.text_edit, get_engine=lambda: self.engine,
+            get_book=lambda: self.book, parent=self)
+        self._ai_latex = AiEditingController(
+            self.latex_edit, get_engine=lambda: self.engine,
+            get_book=lambda: self.book,
+            get_base_dir=lambda: self.project.folder, parent=self)
+
         # riassunto
         self.summary_edit = QPlainTextEdit()
         self.tabs.addTab(self.summary_edit, "4 · Riassunto")

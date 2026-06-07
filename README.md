@@ -29,16 +29,37 @@ python main.py
 ```
 
 ### Configurare il motore AI
-L'app cerca la API key da variabili d'ambiente o dal pannello **Motore** nell'interfaccia:
+L'app cerca la API key da variabili d'ambiente o dal pannello **Motore** nell'interfaccia.
+Il provider consigliato è **Anthropic (Claude Opus 4.8)** per la qualità di scrittura:
 
 ```bash
-export BOOKFORGE_PROVIDER=openai      # openai | anthropic | google
-export BOOKFORGE_MODEL=gpt-4o-mini
-export BOOKFORGE_API_KEY=sk-...
+export BOOKFORGE_PROVIDER=anthropic   # anthropic | openai | google
+export BOOKFORGE_MODEL=claude-opus-4-8
+export BOOKFORGE_API_KEY=sk-ant-...
+```
+
+Per la **generazione di immagini** (Google Imagen / Gemini):
+
+```bash
+export GOOGLE_API_KEY=...             # oppure BOOKFORGE_IMAGE_API_KEY
+export BOOKFORGE_IMAGE_MODEL=imagen-3.0-generate-002
 ```
 
 Senza API key l'app parte in **modalità offline**: genera testo simulato, utile per
 provare interfaccia e flusso di compilazione senza costi.
+
+### Scrittura assistita dall'AI
+Negli editor (testo del capitolo, LaTeX, e browser dei file) il **tasto destro → 🤖 AI**
+offre comandi sulla selezione e strumenti di generazione:
+
+- **Comandi sul testo**: Riscrivi, Espandi, Accorcia, Continua, Più formale, Più
+  divulgativo, Correggi. Ogni proposta passa da un'**anteprima Accetta / Rifiuta /
+  Rigenera** — l'AI non sovrascrive mai senza conferma, e la proposta è modificabile.
+- **Genera diagramma**: l'AI produce **codice TikZ** (LaTeX nativo, vettoriale ed
+  editabile) oppure un diagramma **Mermaid** renderizzato a immagine. Inserito come
+  `figure` con didascalia automatica.
+- **Genera immagine**: l'AI scrive il prompt, **Google Imagen** genera l'immagine in
+  `images/`, e viene inserita con `\includegraphics` e **didascalia generata** sotto.
 
 ---
 
@@ -131,12 +152,22 @@ bookforge/
   core/
     model.py                 Book / Chapter / BookStyle / Project (+ persistenza JSON)
     latex_builder.py         assemblaggio .tex + escape LaTeX
-    compiler.py              .tex, compilazione PDF, apertura TeXstudio/PDF
+    compiler.py              .tex, compilazione PDF, apertura TeXstudio/PDF (Project + path)
+    docx_formatter.py        formattazione .docx: titoli, corpo, immagini, didascalie, indice
+    diagram.py               snippet LaTeX per diagrammi/immagini + render Mermaid/Graphviz
+    image_gen.py             generazione immagini raster (Google Imagen, pluggable)
   agents/
-    engine.py                4 agenti datapizza-ai + orchestrazione + fallback offline
+    engine.py                agenti datapizza-ai + comandi AI (edit/diagram/caption) + fallback
+    commands.py              registro dei comandi di scrittura assistita (menu ↔ engine)
   gui/
-    startup.py               dialog Crea/Modifica
+    startup.py               dialog Crea/Modifica/Apri cartella LaTeX/Strumenti Word
     main_window.py           editor capitoli, stile, motore, toolbar
+    latex_browser.py         browser file + editor per cartelle LaTeX qualsiasi
+    docx_dialog.py           dialog «Sistema Word»
+    ai_menu.py               controller del menu 🤖 AI (comandi, diagrammi, immagini)
+    ai_preview.py            anteprima Accetta/Rifiuta/Rigenera delle proposte AI
+    ai_worker.py             QThread generico per le chiamate AI
     worker.py                QThread per la generazione non bloccante
+    docx_worker.py           QThread per la formattazione .docx
     theme.py                 tema dark (QSS)
 ```

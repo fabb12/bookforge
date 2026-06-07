@@ -26,7 +26,7 @@ def _make_client(provider: str, api_key: str, model: str):
         return OpenAIClient(api_key=api_key, model=model or "gpt-4o-mini")
     if provider == "anthropic":
         from datapizza.clients.anthropic import AnthropicClient
-        return AnthropicClient(api_key=api_key, model=model or "claude-sonnet-4-20250514")
+        return AnthropicClient(api_key=api_key, model=model or "claude-opus-4-8")
     if provider == "google":
         from datapizza.clients.google import GoogleClient
         return GoogleClient(api_key=api_key, model=model or "gemini-1.5-pro")
@@ -35,18 +35,19 @@ def _make_client(provider: str, api_key: str, model: str):
 
 @dataclass
 class EngineConfig:
-    provider: str = "openai"
-    model: str = "gpt-4o-mini"
+    provider: str = "anthropic"
+    model: str = "claude-opus-4-8"
     api_key: str = ""
 
     @staticmethod
     def from_env() -> "EngineConfig":
         return EngineConfig(
-            provider=os.getenv("BOOKFORGE_PROVIDER", "openai"),
-            model=os.getenv("BOOKFORGE_MODEL", "gpt-4o-mini"),
+            provider=os.getenv("BOOKFORGE_PROVIDER", "anthropic"),
+            model=os.getenv("BOOKFORGE_MODEL", "claude-opus-4-8"),
             api_key=os.getenv("BOOKFORGE_API_KEY", "")
+                    or os.getenv("ANTHROPIC_API_KEY", "")
                     or os.getenv("OPENAI_API_KEY", "")
-                    or os.getenv("ANTHROPIC_API_KEY", ""),
+                    or os.getenv("GOOGLE_API_KEY", ""),
         )
 
 
@@ -102,6 +103,47 @@ PROOFREAD_PROMPT = (
     "Restituisci SOLO il paragrafo corretto, come testo semplice."
 )
 
+# --- comandi di scrittura assistita (editing sulla selezione) ---
+EDITOR_PROMPT = (
+    "Sei un editor di testi esperto al servizio di un autore. Ricevi un BRANO e "
+    "un'ISTRUZIONE. Applica l'istruzione al brano e restituisci SOLO il testo "
+    "risultante — niente commenti, virgolette, intestazioni o spiegazioni — nella "
+    "stessa lingua del brano. Non inventare fatti non impliciti nel testo o nel contesto."
+)
+
+OUTLINE_PROMPT = (
+    "Sei un autore. Genera una scaletta puntata (da 5 a 8 punti) per il capitolo "
+    "indicato, coerente con l'argomento del libro. Ogni punto è una frase breve. "
+    "Restituisci SOLO l'elenco, un punto per riga, senza numeri, trattini o commenti."
+)
+
+# --- generazione di diagrammi (come codice) ---
+TIKZ_PROMPT = (
+    "Sei un esperto di TikZ/LaTeX. Data una descrizione, genera SOLO il codice di un "
+    "ambiente tikzpicture (da \\begin{tikzpicture} a \\end{tikzpicture}) che rappresenti "
+    "lo schema. NON includere \\documentclass, \\usepackage, figure o didascalie. "
+    "Puoi assumere i pacchetti tikz con le librerie arrows.meta e positioning. "
+    "Restituisci SOLO codice LaTeX, nessun commento."
+)
+
+MERMAID_PROMPT = (
+    "Sei un esperto di diagrammi Mermaid. Data una descrizione, genera SOLO il codice "
+    "Mermaid (es. flowchart TD, sequenceDiagram, ...), senza backtick né commenti. "
+    "Restituisci solo il codice del diagramma."
+)
+
+CAPTION_PROMPT = (
+    "Genera una didascalia breve e chiara (una sola frase) per la figura descritta, "
+    "in {lingua}. Non includere il prefisso «Figura N:». Restituisci SOLO la didascalia."
+)
+
+IMAGE_PROMPT_PROMPT = (
+    "Sei un assistente che scrive prompt per un generatore di immagini. Data una "
+    "richiesta dell'autore e il contesto del libro, scrivi UN prompt in inglese, "
+    "dettagliato e descrittivo (soggetto, stile, composizione, illuminazione), adatto "
+    "a un modello text-to-image. Restituisci SOLO il prompt, senza virgolette."
+)
+
 
 # ---------------------------------------------------------------- real engine
 class DatapizzaEngine:
@@ -149,6 +191,43 @@ class DatapizzaEngine:
         out = a.run(text).text.strip()
         return _strip_code_fences(out) or text
 
+    # -- scrittura assistita (comandi sulla selezione) --------------------
+    def edit_text(self, instruction: str, text: str, book: Book | None = None) -> str:
+        a = self._agent("editor", EDITOR_PROMPT)
+        ctx = ""
+        if book is not None:
+            ctx = (f"Contesto del libro: «{book.title}» — argomento «{book.topic or book.title}», "
+                   f"lingua {book.style.language}.\n\n")
+        task = f"{ctx}ISTRUZIONE: {instruction}\n\nBRANO:\n{text}"
+        return _strip_code_fences(a.run(task).text.strip())
+
+    def outline(self, book: Book, ch: Chapter) -> str:
+        a = self._agent("outliner", OUTLINE_PROMPT)
+        task = (f"Libro: «{book.title}» (argomento: {book.topic or book.title}).\n"
+                f"Capitolo: «{ch.title}».\n"
+                f"Eventuali concetti già annotati:\n{ch.raw_concepts or '(nessuno)'}")
+        return a.run(task).text.strip()
+
+    # -- diagrammi (come codice) ------------------------------------------
+    def generate_diagram(self, description: str, kind: str = "tikz",
+                         book: Book | None = None) -> str:
+        prompt = MERMAID_PROMPT if kind == "mermaid" else TIKZ_PROMPT
+        a = self._agent("diagrammer", prompt)
+        ctx = f"Contesto: libro «{book.title}».\n\n" if book is not None else ""
+        return _strip_code_fences(a.run(ctx + description).text.strip())
+
+    # -- didascalie + prompt per immagini ---------------------------------
+    def caption(self, subject: str, book: Book | None = None) -> str:
+        lingua = book.style.language if book is not None else "italiano"
+        a = self._agent("captioner", CAPTION_PROMPT.format(lingua=lingua))
+        return _strip_code_fences(a.run(subject).text.strip())
+
+    def image_prompt(self, request: str, book: Book | None = None) -> str:
+        a = self._agent("imageprompter", IMAGE_PROMPT_PROMPT)
+        ctx = (f"Contesto: libro «{book.title}» — argomento «{book.topic or book.title}».\n\n"
+               if book is not None else "")
+        return _strip_code_fences(a.run(ctx + "Richiesta: " + request).text.strip())
+
 
 # ---------------------------------------------------------------- offline fallback
 class MockEngine:
@@ -181,6 +260,39 @@ class MockEngine:
     def proofread(self, text: str) -> str:
         # offline: pulizia minima degli spazi, nessuna correzione linguistica
         return re.sub(r"[ \t]{2,}", " ", text).strip()
+
+    # -- scrittura assistita (simulata) -----------------------------------
+    def edit_text(self, instruction: str, text: str, book: Book | None = None) -> str:
+        clean = re.sub(r"[ \t]{2,}", " ", text).strip()
+        return f"% [offline] «{instruction}» applicata a:\n{clean}"
+
+    def outline(self, book: Book, ch: Chapter) -> str:
+        base = [c.strip() for c in re.split(r"[\n;.]", ch.raw_concepts) if c.strip()]
+        if not base:
+            base = ["Introduzione all'argomento", "Concetti chiave",
+                    "Esempi e applicazioni", "Implicazioni", "Sintesi"]
+        return "\n".join(base[:8])
+
+    def generate_diagram(self, description: str, kind: str = "tikz",
+                         book: Book | None = None) -> str:
+        if kind == "mermaid":
+            return ("flowchart TD\n"
+                    "    A[Inizio] --> B[Elaborazione]\n"
+                    "    B --> C[Fine]\n"
+                    f"    %% offline: {description[:60]}")
+        return ("\\begin{tikzpicture}[>=stealth, node distance=2cm]\n"
+                "  \\node (a) [draw, rounded corners] {Inizio};\n"
+                "  \\node (b) [draw, rounded corners, right=of a] {Fine};\n"
+                "  \\draw[->] (a) -- (b);\n"
+                f"  % offline: {description[:60]}\n"
+                "\\end{tikzpicture}")
+
+    def caption(self, subject: str, book: Book | None = None) -> str:
+        s = subject.strip().rstrip(".")
+        return (s[:120] + "…") if len(s) > 120 else (s or "Figura")
+
+    def image_prompt(self, request: str, book: Book | None = None) -> str:
+        return f"{request.strip()} — detailed illustration, book figure, clean style"
 
 
 # ---------------------------------------------------------------- orchestrazione

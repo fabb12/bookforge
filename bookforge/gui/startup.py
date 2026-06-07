@@ -160,6 +160,8 @@ class StartupDialog(QDialog):
         # apre il formattatore Word come dialog modale, senza chiudere l'avvio
         from .docx_dialog import DocxFormatDialog
         from ..agents.engine import EngineConfig, build_engine
-        engine, engine_real, _ = build_engine(EngineConfig.from_env())
+        from ..core.settings import AppSettings
+        engine, engine_real, _ = build_engine(
+            EngineConfig.from_settings(AppSettings.load()))
         dlg = DocxFormatDialog(self, engine=engine, engine_real=engine_real)
         dlg.exec()

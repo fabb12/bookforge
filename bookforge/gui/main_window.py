@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 
 from ..core.model import Project, Chapter
 from ..core import compiler
+from ..core.settings import AppSettings
 from ..agents.engine import EngineConfig, build_engine
 from .worker import GenerateWorker
 
@@ -23,7 +24,8 @@ class MainWindow(QMainWindow):
         self.worker: GenerateWorker | None = None
         self._dirty = False
 
-        self.engine_config = EngineConfig.from_env()
+        self.app_settings = AppSettings.load()
+        self.engine_config = EngineConfig.from_settings(self.app_settings)
         self.engine, self.engine_real, msg = build_engine(self.engine_config)
 
         self.setWindowTitle(f"BookForge — {self.book.title}")
@@ -52,7 +54,23 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(2, 0)
         splitter.setSizes([240, 620, 320])
 
+        self._build_menubar()
         self._build_toolbar()
+
+    def _build_menubar(self):
+        bar = self.menuBar()
+
+        # --- Strumenti: conversione progetti e pipeline Word ---
+        tools = bar.addMenu("🛠 Strumenti")
+        tools.addAction("📥 Converti progetto LaTeX in progetto BookForge…",
+                        self._convert_latex_project)
+        tools.addSeparator()
+        tools.addAction("📝 Sistema Word → LaTeX → PDF…", self._open_word_pdf)
+        tools.addAction("🧾 Formatta documento Word (.docx)…", self._open_docx_formatter)
+
+        # --- Impostazioni: API e modelli LLM ---
+        settings = bar.addMenu("⚙ Impostazioni")
+        settings.addAction("🔑 API e modelli LLM…", self._open_settings)
 
     def _build_toolbar(self):
         tb = self.addToolBar("Azioni")
@@ -126,7 +144,6 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
         add("📂 File progetto", self._open_file_browser)
-        add("📝 Sistema Word", self._open_docx_formatter)
 
     def _left_panel(self) -> QWidget:
         w = QWidget()
@@ -743,6 +760,55 @@ class MainWindow(QMainWindow):
         from .docx_dialog import DocxFormatDialog
         dlg = DocxFormatDialog(self, engine=self.engine, engine_real=self.engine_real)
         dlg.exec()
+
+    def _open_word_pdf(self):
+        from .word_pdf_dialog import WordToPdfDialog
+        dlg = WordToPdfDialog(self, engine=self.engine, engine_real=self.engine_real)
+        dlg.exec()
+
+    # ============================================================ strumenti
+    def _convert_latex_project(self):
+        """Importa una cartella LaTeX esistente come nuovo progetto BookForge."""
+        from ..core.latex_import import convert_latex_to_project   # import pigro
+        src = QFileDialog.getExistingDirectory(
+            self, "Scegli la cartella del progetto LaTeX da convertire")
+        if not src:
+            return
+        dest = QFileDialog.getExistingDirectory(
+            self, "Scegli dove salvare il nuovo progetto BookForge")
+        if not dest:
+            return
+        try:
+            project = convert_latex_to_project(src, dest)
+        except FileNotFoundError as e:
+            QMessageBox.warning(self, "Nessun LaTeX", str(e))
+            return
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "Conversione fallita", str(e))
+            return
+        n = len(project.book.chapters)
+        if QMessageBox.question(
+                self, "Progetto creato",
+                f"Convertiti {n} capitoli in:\n{project.folder}\n\n"
+                "Aprire ora il nuovo progetto BookForge?") == \
+                QMessageBox.StandardButton.Yes:
+            self._win = MainWindow(project)
+            self._win.show()
+
+    def _open_settings(self):
+        from .settings_dialog import SettingsDialog
+        dlg = SettingsDialog(self, settings=self.app_settings)
+        if dlg.exec() != SettingsDialog.DialogCode.Accepted:
+            return
+        self.app_settings = dlg.settings
+        self.engine_config = EngineConfig.from_settings(self.app_settings)
+        self.engine, self.engine_real, msg = build_engine(self.engine_config)
+        # tiene allineata la scheda «Motore» del pannello destro
+        self.e_provider.setCurrentText(self.engine_config.provider)
+        self.e_model.setText(self.engine_config.model)
+        self.e_key.setText(self.engine_config.api_key)
+        self.e_status.setText(msg)
+        self.statusBar().showMessage(msg, 5000)
 
     def closeEvent(self, event):
         self._save(silent=True)

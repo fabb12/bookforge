@@ -37,6 +37,8 @@ Test GUI headless: prefissa **sempre** `QT_QPA_PLATFORM=offscreen`. Attenzione: 
 - `BOOKFORGE_MODEL` (default `claude-opus-4-8`)
 - `BOOKFORGE_API_KEY` (o `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GOOGLE_API_KEY`)
 - Senza chiave → modalità offline (`MockEngine`).
+- In alternativa all'env: menu **⚙ Impostazioni** → salva provider/modello/chiavi (per-provider)
+  e parametri in `~/.bookforge/settings.json` (`core/settings.py`; override path con `BOOKFORGE_CONFIG`).
 
 ## Mappa rapida (dettagli in `.claude/codemap.md`)
 - `core/model.py` — `Book`, `Chapter`, `BookStyle`, `Project`. Persistenza = cartella

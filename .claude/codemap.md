@@ -22,6 +22,9 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
 | `progress.py` | Istantanee metriche nel tempo | `snapshot`, `save_snapshot`, `load_history`, `delta` (file `progress.json`) |
 | `versioning.py` | Versioni opera + diff | `save_version`, `list_versions`, `load_version_book`, `diff_books`, `diff_html`, `diff_stats` (dir `.bookforge_versions/`) |
 | `export.py` | Export Markdown/EPUB | `build_markdown`, `write_markdown`, `build_epub` (pandoc o writer interno) |
+| `latex_import.py` | Importa un progetto LaTeX in un `Book` | `latex_to_book`, `import_latex_project`, `convert_latex_to_project` (risolve `\input`, estrae metadati e capitoli) |
+| `word_to_latex.py` | Pipeline Word→LaTeX→PDF (pandoc + sistemazioni pure) | `WordFixOptions`, `convert_word`, `postprocess_latex`, `proofread_latex`, `pandoc_available` |
+| `settings.py` | Impostazioni globali LLM persistenti (`~/.bookforge/settings.json`) | `AppSettings` (provider/modello/chiavi per-provider/temperatura/max_tokens), `settings_path` |
 
 ## `bookforge/agents/` — orchestrazione AI
 - `engine.py`:
@@ -42,11 +45,13 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
   pannello Stile, toolbar. Hub che apre tutti i dialog e avvia i worker.
 - `latex_browser.py` — `LatexBrowserWindow`: editor di una cartella LaTeX qualsiasi.
 - Dialog: `mentor_dialog`, `metrics_dialog`, `argument_dialog`, `biblio_dialog`,
-  `versions_dialog`, `docx_dialog`.
+  `versions_dialog`, `docx_dialog`, `word_pdf_dialog` (Word→LaTeX→PDF), `settings_dialog` (API/LLM).
+- Menu della finestra: «🛠 Strumenti» (converti progetto LaTeX → BookForge, Word→LaTeX→PDF,
+  formatta .docx) e «⚙ Impostazioni» (API e modelli LLM).
 - Supporto: `ai_menu` (menu 🤖 a tasto destro), `ai_preview` (Accetta/Rifiuta/Rigenera),
   `latex_highlighter` (sintassi LaTeX), `pdf_view` (anteprima QtPdf + fallback), `theme` (QSS).
 - Worker (QThread): `worker` (generazione capitolo), `autogen_worker` (autopilota),
-  `docx_worker` (Word), `ai_worker` (chiamata AI generica).
+  `docx_worker` (Word), `word_worker` (Word→LaTeX→PDF), `ai_worker` (chiamata AI generica).
 
 ## Test
 - `tests/test_core.py` — moduli core puri (analisi, struttura, biblio, progressi,

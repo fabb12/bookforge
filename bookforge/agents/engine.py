@@ -19,18 +19,31 @@ from typing import Callable
 from ..core.model import Book, Chapter
 
 # ---------------------------------------------------------------- client factory
-def _make_client(provider: str, api_key: str, model: str):
+def _make_client(provider: str, api_key: str, model: str,
+                 temperature: float | None = None, max_tokens: int = 0):
     provider = provider.lower()
     if provider == "openai":
-        from datapizza.clients.openai import OpenAIClient
-        return OpenAIClient(api_key=api_key, model=model or "gpt-4o-mini")
-    if provider == "anthropic":
-        from datapizza.clients.anthropic import AnthropicClient
-        return AnthropicClient(api_key=api_key, model=model or "claude-opus-4-8")
-    if provider == "google":
-        from datapizza.clients.google import GoogleClient
-        return GoogleClient(api_key=api_key, model=model or "gemini-1.5-pro")
-    raise ValueError(f"Provider non supportato: {provider}")
+        from datapizza.clients.openai import OpenAIClient as Cls
+        model = model or "gpt-4o-mini"
+    elif provider == "anthropic":
+        from datapizza.clients.anthropic import AnthropicClient as Cls
+        model = model or "claude-opus-4-8"
+    elif provider == "google":
+        from datapizza.clients.google import GoogleClient as Cls
+        model = model or "gemini-1.5-pro"
+    else:
+        raise ValueError(f"Provider non supportato: {provider}")
+    # i parametri di campionamento sono opzionali: alcuni client non li accettano,
+    # in quel caso si ripiega sulla costruzione minimale
+    extra: dict = {}
+    if temperature is not None:
+        extra["temperature"] = temperature
+    if max_tokens:
+        extra["max_tokens"] = max_tokens
+    try:
+        return Cls(api_key=api_key, model=model, **extra)
+    except TypeError:
+        return Cls(api_key=api_key, model=model)
 
 
 @dataclass
@@ -38,6 +51,8 @@ class EngineConfig:
     provider: str = "anthropic"
     model: str = "claude-opus-4-8"
     api_key: str = ""
+    temperature: float = 0.7
+    max_tokens: int = 0
 
     @staticmethod
     def from_env() -> "EngineConfig":
@@ -48,6 +63,22 @@ class EngineConfig:
                     or os.getenv("ANTHROPIC_API_KEY", "")
                     or os.getenv("OPENAI_API_KEY", "")
                     or os.getenv("GOOGLE_API_KEY", ""),
+        )
+
+    @staticmethod
+    def from_settings(settings) -> "EngineConfig":
+        """Costruisce la configurazione dalle impostazioni persistenti.
+
+        La chiave del provider scelto ha la precedenza; se manca, si ripiega
+        sulle variabili d'ambiente (così l'avvio resta comodo da terminale).
+        """
+        key = settings.api_key_for() or EngineConfig.from_env().api_key
+        return EngineConfig(
+            provider=settings.provider,
+            model=settings.model,
+            api_key=key,
+            temperature=settings.temperature,
+            max_tokens=settings.max_tokens,
         )
 
 
@@ -202,7 +233,9 @@ class DatapizzaEngine:
         from datapizza.agents import Agent  # import qui per gestire l'assenza della libreria
         self._Agent = Agent
         self.config = config
-        self._client = _make_client(config.provider, config.api_key, config.model)
+        self._client = _make_client(config.provider, config.api_key, config.model,
+                                    temperature=config.temperature,
+                                    max_tokens=config.max_tokens)
 
     def _agent(self, name: str, system_prompt: str):
         return self._Agent(name=name, client=self._client,

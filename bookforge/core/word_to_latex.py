@@ -77,7 +77,8 @@ def docx_to_latex(docx_path: str | Path, out_dir: str | Path,
 
     try:
         r = subprocess.run(cmd, cwd=str(out_dir), capture_output=True,
-                           text=True, timeout=240)
+                           text=True, encoding="utf-8", errors="replace",
+                           timeout=240)
     except subprocess.TimeoutExpired as e:
         raise RuntimeError("Timeout durante la conversione con pandoc.") from e
     if r.returncode != 0 or not r.stdout.strip():

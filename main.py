@@ -21,7 +21,10 @@ def main():
     if startup.project is not None:
         win = MainWindow(startup.project)
     elif startup.latex_folder is not None:
-        win = LatexBrowserWindow(startup.latex_folder)
+        from bookforge.agents.engine import EngineConfig, build_engine
+        engine, engine_real, _ = build_engine(EngineConfig.from_env())
+        win = LatexBrowserWindow(startup.latex_folder,
+                                 engine=engine, engine_real=engine_real)
     else:
         return 0
 

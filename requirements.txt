@@ -1,7 +1,16 @@
 PyQt6>=6.6
 python-docx>=1.1
 datapizza-ai>=0.0.2
-# Client provider (installa quello che usi):
-datapizza-ai-clients-openai
-# datapizza-ai-clients-anthropic
+# Client provider del motore di testo (installa quello che usi):
+# Consigliato: Anthropic (Claude Opus 4.8) per la scrittura assistita.
+datapizza-ai-clients-anthropic
+# datapizza-ai-clients-openai
 # datapizza-ai-clients-google
+
+# Generazione di immagini (opzionale): Google Imagen / Gemini.
+# google-genai
+
+# Render diagrammi (opzionale, strumenti esterni a riga di comando):
+#   Mermaid:  npm install -g @mermaid-js/mermaid-cli   (comando: mmdc)
+#   Graphviz: pacchetto di sistema graphviz            (comando: dot)
+# TikZ non richiede strumenti esterni: compila direttamente in LaTeX.

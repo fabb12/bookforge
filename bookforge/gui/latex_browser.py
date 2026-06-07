@@ -89,11 +89,26 @@ class LatexBrowserWindow(QMainWindow):
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.editor.setPlaceholderText(
             "Apri un file di testo (es. .tex) dall'albero per modificarlo qui.\n"
-            "Inserisci i tuoi punti/sezioni e premi «Salva».")
+            "Inserisci i tuoi punti/sezioni e premi «Salva».\n"
+            "Tasto destro → 🤖 AI per riscrivere, generare diagrammi o immagini.")
         self.editor.setEnabled(False)
         self.editor.textChanged.connect(self._on_text_changed)
         rlay.addWidget(self.editor)
         splitter.addWidget(right)
+
+        # evidenziazione sintassi LaTeX (attivata solo sui file .tex-like)
+        from .latex_highlighter import LatexHighlighter
+        self._latex_hl = LatexHighlighter(self.editor.document())
+        self._latex_hl.setDocument(None)
+
+        # menu contestuale di scrittura assistita
+        from .ai_menu import AiEditingController
+        self._ai = AiEditingController(
+            self.editor,
+            get_engine=lambda: self.engine,
+            get_base_dir=self._image_base_dir,
+            parent=self,
+        )
 
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
@@ -121,6 +136,12 @@ class LatexBrowserWindow(QMainWindow):
         tb.addSeparator()
         add("📝 Sistema Word", self._open_docx_formatter)
         add("📂 Cambia cartella", self._change_folder)
+
+    def _image_base_dir(self) -> Path | None:
+        """Cartella rispetto a cui risolvere immagini/diagrammi: quella del .tex aperto."""
+        if self.current_path is not None:
+            return self.current_path.parent
+        return self.folder
 
     # --------------------------------------------------------------- file tree
     def _path_for_index(self, index) -> Path | None:
@@ -165,6 +186,9 @@ class LatexBrowserWindow(QMainWindow):
         self.editor.setEnabled(True)
         self.current_path = path
         self._dirty = False
+        # evidenzia la sintassi solo sui file LaTeX
+        tex_like = suffix in {".tex", ".sty", ".cls", ".tikz", ".def", ".clo", ".bbl"}
+        self._latex_hl.setDocument(self.editor.document() if tex_like else None)
         self._update_title()
 
     @staticmethod
@@ -283,6 +307,9 @@ class LatexBrowserWindow(QMainWindow):
         candidates.extend(sorted(self.folder.glob("*.pdf")))
         for pdf in candidates:
             if pdf.exists():
+                from .pdf_view import show_pdf
+                if show_pdf(self, pdf):
+                    return
                 ok, msg = compiler.open_pdf_path(pdf)
                 if not ok:
                     QMessageBox.warning(self, "PDF", msg)

@@ -26,7 +26,7 @@ def _make_client(provider: str, api_key: str, model: str):
         return OpenAIClient(api_key=api_key, model=model or "gpt-4o-mini")
     if provider == "anthropic":
         from datapizza.clients.anthropic import AnthropicClient
-        return AnthropicClient(api_key=api_key, model=model or "claude-sonnet-4-20250514")
+        return AnthropicClient(api_key=api_key, model=model or "claude-opus-4-8")
     if provider == "google":
         from datapizza.clients.google import GoogleClient
         return GoogleClient(api_key=api_key, model=model or "gemini-1.5-pro")
@@ -35,18 +35,19 @@ def _make_client(provider: str, api_key: str, model: str):
 
 @dataclass
 class EngineConfig:
-    provider: str = "openai"
-    model: str = "gpt-4o-mini"
+    provider: str = "anthropic"
+    model: str = "claude-opus-4-8"
     api_key: str = ""
 
     @staticmethod
     def from_env() -> "EngineConfig":
         return EngineConfig(
-            provider=os.getenv("BOOKFORGE_PROVIDER", "openai"),
-            model=os.getenv("BOOKFORGE_MODEL", "gpt-4o-mini"),
+            provider=os.getenv("BOOKFORGE_PROVIDER", "anthropic"),
+            model=os.getenv("BOOKFORGE_MODEL", "claude-opus-4-8"),
             api_key=os.getenv("BOOKFORGE_API_KEY", "")
+                    or os.getenv("ANTHROPIC_API_KEY", "")
                     or os.getenv("OPENAI_API_KEY", "")
-                    or os.getenv("ANTHROPIC_API_KEY", ""),
+                    or os.getenv("GOOGLE_API_KEY", ""),
         )
 
 
@@ -102,6 +103,98 @@ PROOFREAD_PROMPT = (
     "Restituisci SOLO il paragrafo corretto, come testo semplice."
 )
 
+# --- comandi di scrittura assistita (editing sulla selezione) ---
+EDITOR_PROMPT = (
+    "Sei un editor di testi esperto al servizio di un autore. Ricevi un BRANO e "
+    "un'ISTRUZIONE. Applica l'istruzione al brano e restituisci SOLO il testo "
+    "risultante — niente commenti, virgolette, intestazioni o spiegazioni — nella "
+    "stessa lingua del brano. Non inventare fatti non impliciti nel testo o nel contesto."
+)
+
+OUTLINE_PROMPT = (
+    "Sei un autore. Genera una scaletta puntata (da 5 a 8 punti) per il capitolo "
+    "indicato, coerente con l'argomento del libro. Ogni punto è una frase breve. "
+    "Restituisci SOLO l'elenco, un punto per riga, senza numeri, trattini o commenti."
+)
+
+TRANSITIONS_PROMPT = (
+    "Sei un editor che cura la coesione di un capitolo. Ricevi il testo completo del "
+    "capitolo e ne migliori i RACCORDI tra paragrafi e sezioni: aggiungi o riscrivi le "
+    "frasi di transizione perché il discorso scorra senza salti logici. NON cambiare i "
+    "contenuti, i fatti o lo stile, non aggiungere o togliere sezioni. Restituisci SOLO "
+    "il testo del capitolo revisionato, senza commenti né intestazioni."
+)
+
+BRIDGE_PROMPT = (
+    "Sei un autore. Scrivi UN solo paragrafo breve di raccordo che colleghi il capitolo "
+    "corrente al capitolo {dove} del libro, in modo fluido e coerente con lo stile. "
+    "Usa i riassunti forniti come contesto. Restituisci SOLO il paragrafo, senza "
+    "intestazioni né virgolette."
+)
+
+# --- generazione di diagrammi (come codice) ---
+TIKZ_PROMPT = (
+    "Sei un esperto di TikZ/LaTeX. Data una descrizione, genera SOLO il codice di un "
+    "ambiente tikzpicture (da \\begin{tikzpicture} a \\end{tikzpicture}) che rappresenti "
+    "lo schema. NON includere \\documentclass, \\usepackage, figure o didascalie. "
+    "Puoi assumere i pacchetti tikz con le librerie arrows.meta e positioning. "
+    "Restituisci SOLO codice LaTeX, nessun commento."
+)
+
+MERMAID_PROMPT = (
+    "Sei un esperto di diagrammi Mermaid. Data una descrizione, genera SOLO il codice "
+    "Mermaid (es. flowchart TD, sequenceDiagram, ...), senza backtick né commenti. "
+    "Restituisci solo il codice del diagramma."
+)
+
+CAPTION_PROMPT = (
+    "Genera una didascalia breve e chiara (una sola frase) per la figura descritta, "
+    "in {lingua}. Non includere il prefisso «Figura N:». Restituisci SOLO la didascalia."
+)
+
+IMAGE_PROMPT_PROMPT = (
+    "Sei un assistente che scrive prompt per un generatore di immagini. Data una "
+    "richiesta dell'autore e il contesto del libro, scrivi UN prompt in inglese, "
+    "dettagliato e descrittivo (soggetto, stile, composizione, illuminazione), adatto "
+    "a un modello text-to-image. Restituisci SOLO il prompt, senza virgolette."
+)
+
+# --- modalità mentore: feedback, non riscrittura ---
+REVIEW_PROMPT = (
+    "Sei un mentore di scrittura, non un ghostwriter. Ricevi un brano e fornisci "
+    "FEEDBACK per far crescere l'autore: NON riscrivere il testo. Individua al massimo "
+    "5 punti migliorabili (chiarezza, struttura, logica, stile, ritmo). Per ciascuno "
+    "scrivi una riga nel formato esatto:\n"
+    "PROBLEMA: ... | PERCHÉ: ... | SUGGERIMENTO: ...\n"
+    "Sii concreto e didattico; spiega il PERCHÉ così l'autore impara. Nessun'altra riga."
+)
+
+SOCRATIC_PROMPT = (
+    "Sei un mentore socratico. Leggi il brano e poni da 3 a 5 DOMANDE aperte che aiutino "
+    "l'autore a sviluppare e rafforzare il pensiero (tesi, prove, pubblico, obiezioni, "
+    "esempi). Non dare risposte né riscrivere il testo. Una domanda per riga, senza numeri."
+)
+
+CLAIM_PROMPT = (
+    "Sei un editor attento al rigore. Elenca le affermazioni FATTUALI del brano che "
+    "andrebbero supportate da una fonte o verificate (dati, date, primati, "
+    "generalizzazioni). Per ciascuna una riga nel formato:\n"
+    "CLAIM: ... | MOTIVO: ...\n"
+    "NON inventare fonti e non riscrivere il testo. Solo le righe richieste."
+)
+
+ARGMAP_PROMPT = (
+    "Sei un mentore che aiuta a strutturare un saggio. Dato titolo, argomento e concetti, "
+    "proponi una mappa dell'argomentazione. Usa ESATTAMENTE questo formato, una voce per riga:\n"
+    "TESI: <una frase>\n"
+    "ARGOMENTO: <affermazione>\n"
+    "PROVA: <evidenza a sostegno>\n"
+    "OBIEZIONE: <possibile contro-argomento>\n"
+    "REPLICA: <risposta all'obiezione>\n"
+    "Ripeti ARGOMENTO/PROVA/OBIEZIONE/REPLICA per ogni argomento (2-4 argomenti). "
+    "Nessun commento, nessun'altra riga."
+)
+
 
 # ---------------------------------------------------------------- real engine
 class DatapizzaEngine:
@@ -149,6 +242,85 @@ class DatapizzaEngine:
         out = a.run(text).text.strip()
         return _strip_code_fences(out) or text
 
+    # -- scrittura assistita (comandi sulla selezione) --------------------
+    def edit_text(self, instruction: str, text: str, book: Book | None = None) -> str:
+        a = self._agent("editor", EDITOR_PROMPT)
+        ctx = ""
+        if book is not None:
+            ctx = (f"Contesto del libro: «{book.title}» — argomento «{book.topic or book.title}», "
+                   f"lingua {book.style.language}.\n\n")
+        task = f"{ctx}ISTRUZIONE: {instruction}\n\nBRANO:\n{text}"
+        return _strip_code_fences(a.run(task).text.strip())
+
+    def outline(self, book: Book, ch: Chapter) -> str:
+        a = self._agent("outliner", OUTLINE_PROMPT)
+        task = (f"Libro: «{book.title}» (argomento: {book.topic or book.title}).\n"
+                f"Capitolo: «{ch.title}».\n"
+                f"Eventuali concetti già annotati:\n{ch.raw_concepts or '(nessuno)'}")
+        return a.run(task).text.strip()
+
+    def transitions(self, book: Book, text: str) -> str:
+        a = self._agent("transitions", TRANSITIONS_PROMPT)
+        return a.run(text).text.strip()
+
+    def bridge(self, book: Book, ch: Chapter, where: str = "next") -> str:
+        prev, nxt = book.neighbors(ch.id)
+        if where == "prev":
+            neighbor, dove = prev, "PRECEDENTE"
+        else:
+            neighbor, dove = nxt, "SUCCESSIVO"
+        if neighbor is None:
+            return ""
+        a = self._agent("bridge", BRIDGE_PROMPT.format(dove=dove.lower()))
+        task = (f"Capitolo corrente «{ch.title}» — riassunto: "
+                f"{ch.summary or '(nessun riassunto)'}\n"
+                f"Capitolo {dove} «{neighbor.title}» — riassunto: "
+                f"{neighbor.summary or '(nessun riassunto)'}")
+        return _strip_code_fences(a.run(task).text.strip())
+
+    # -- diagrammi (come codice) ------------------------------------------
+    def generate_diagram(self, description: str, kind: str = "tikz",
+                         book: Book | None = None) -> str:
+        prompt = MERMAID_PROMPT if kind == "mermaid" else TIKZ_PROMPT
+        a = self._agent("diagrammer", prompt)
+        ctx = f"Contesto: libro «{book.title}».\n\n" if book is not None else ""
+        return _strip_code_fences(a.run(ctx + description).text.strip())
+
+    # -- didascalie + prompt per immagini ---------------------------------
+    def caption(self, subject: str, book: Book | None = None) -> str:
+        lingua = book.style.language if book is not None else "italiano"
+        a = self._agent("captioner", CAPTION_PROMPT.format(lingua=lingua))
+        return _strip_code_fences(a.run(subject).text.strip())
+
+    def image_prompt(self, request: str, book: Book | None = None) -> str:
+        a = self._agent("imageprompter", IMAGE_PROMPT_PROMPT)
+        ctx = (f"Contesto: libro «{book.title}» — argomento «{book.topic or book.title}».\n\n"
+               if book is not None else "")
+        return _strip_code_fences(a.run(ctx + "Richiesta: " + request).text.strip())
+
+    # -- modalità mentore (feedback, non riscrittura) ---------------------
+    def review_notes(self, text: str, book: Book | None = None) -> list[dict]:
+        a = self._agent("mentor", REVIEW_PROMPT)
+        out = a.run(text).text.strip()
+        return _parse_review(out)
+
+    def socratic_questions(self, text: str, book: Book | None = None) -> list[str]:
+        a = self._agent("socratic", SOCRATIC_PROMPT)
+        out = a.run(text).text.strip()
+        return [l.strip(" -•*\t") for l in out.splitlines() if l.strip()]
+
+    def claim_notes(self, text: str, book: Book | None = None) -> list[dict]:
+        a = self._agent("claims", CLAIM_PROMPT)
+        out = a.run(text).text.strip()
+        return _parse_claims(out)
+
+    def argument_map(self, book: Book, ch: Chapter) -> str:
+        a = self._agent("argmapper", ARGMAP_PROMPT)
+        task = (f"Titolo del capitolo: «{ch.title}».\n"
+                f"Argomento del libro: «{book.topic or book.title}».\n"
+                f"Concetti:\n{ch.raw_concepts or ch.text or '(nessuno)'}")
+        return a.run(task).text.strip()
+
 
 # ---------------------------------------------------------------- offline fallback
 class MockEngine:
@@ -182,6 +354,83 @@ class MockEngine:
         # offline: pulizia minima degli spazi, nessuna correzione linguistica
         return re.sub(r"[ \t]{2,}", " ", text).strip()
 
+    # -- scrittura assistita (simulata) -----------------------------------
+    def edit_text(self, instruction: str, text: str, book: Book | None = None) -> str:
+        clean = re.sub(r"[ \t]{2,}", " ", text).strip()
+        return f"% [offline] «{instruction}» applicata a:\n{clean}"
+
+    def outline(self, book: Book, ch: Chapter) -> str:
+        base = [c.strip() for c in re.split(r"[\n;.]", ch.raw_concepts) if c.strip()]
+        if not base:
+            base = ["Introduzione all'argomento", "Concetti chiave",
+                    "Esempi e applicazioni", "Implicazioni", "Sintesi"]
+        return "\n".join(base[:8])
+
+    def transitions(self, book: Book, text: str) -> str:
+        return text  # offline: nessuna modifica ai raccordi
+
+    def bridge(self, book: Book, ch: Chapter, where: str = "next") -> str:
+        prev, nxt = book.neighbors(ch.id)
+        neighbor = prev if where == "prev" else nxt
+        if neighbor is None:
+            return ""
+        verso = "quanto visto in" if where == "prev" else "quanto vedremo in"
+        return (f"Prima di proseguire, conviene collegare questo capitolo a "
+                f"{verso} «{neighbor.title}», così da non perdere il filo del discorso.")
+
+    def generate_diagram(self, description: str, kind: str = "tikz",
+                         book: Book | None = None) -> str:
+        if kind == "mermaid":
+            return ("flowchart TD\n"
+                    "    A[Inizio] --> B[Elaborazione]\n"
+                    "    B --> C[Fine]\n"
+                    f"    %% offline: {description[:60]}")
+        return ("\\begin{tikzpicture}[>=stealth, node distance=2cm]\n"
+                "  \\node (a) [draw, rounded corners] {Inizio};\n"
+                "  \\node (b) [draw, rounded corners, right=of a] {Fine};\n"
+                "  \\draw[->] (a) -- (b);\n"
+                f"  % offline: {description[:60]}\n"
+                "\\end{tikzpicture}")
+
+    def caption(self, subject: str, book: Book | None = None) -> str:
+        s = subject.strip().rstrip(".")
+        return (s[:120] + "…") if len(s) > 120 else (s or "Figura")
+
+    def image_prompt(self, request: str, book: Book | None = None) -> str:
+        return f"{request.strip()} — detailed illustration, book figure, clean style"
+
+    # -- modalità mentore (offline: euristiche deterministiche) -----------
+    def review_notes(self, text: str, book: Book | None = None) -> list[dict]:
+        from ..core.analysis import heuristic_notes
+        return [{"issue": n.issue, "detail": n.detail, "suggestion": n.suggestion,
+                 "severity": n.severity, "excerpt": n.excerpt, "source": "euristica"}
+                for n in heuristic_notes(text)]
+
+    def socratic_questions(self, text: str, book: Book | None = None) -> list[str]:
+        return [
+            "Qual è la tesi centrale di questo brano, in una frase?",
+            "Quali prove o esempi la sostengono?",
+            "Che obiezione potrebbe sollevare un lettore critico?",
+            "A chi ti stai rivolgendo, e questo testo è adatto a quel pubblico?",
+            "Cosa puoi togliere senza perdere il significato?",
+        ]
+
+    def claim_notes(self, text: str, book: Book | None = None) -> list[dict]:
+        from ..core.analysis import flag_claims
+        return [{"text": f.text, "reason": f.reason, "source": "euristica"}
+                for f in flag_claims(text)]
+
+    def argument_map(self, book: Book, ch: Chapter) -> str:
+        pts = [c.strip() for c in re.split(r"[\n;.]", ch.raw_concepts or ch.text)
+               if c.strip()]
+        lines = [f"TESI: {ch.title}"]
+        for p in pts[:4]:
+            lines.append(f"ARGOMENTO: {p}")
+            lines.append("PROVA: (aggiungi un'evidenza a sostegno)")
+        if len(lines) == 1:
+            lines.append("ARGOMENTO: (primo argomento)")
+        return "\n".join(lines)
+
 
 # ---------------------------------------------------------------- orchestrazione
 def build_engine(config: EngineConfig, force_offline: bool = False):
@@ -193,6 +442,38 @@ def build_engine(config: EngineConfig, force_offline: bool = False):
         return eng, True, f"Motore datapizza-ai attivo ({config.provider}/{config.model})."
     except Exception as e:  # libreria mancante o errore di init
         return MockEngine(), False, f"Fallback offline ({e})."
+
+
+def autodraft_chapter(engine, book: Book, ch: Chapter,
+                      progress: Callable[[str], None] | None = None) -> Chapter:
+    """Autopilota: genera un capitolo con il minimo sforzo, mantenendo lo stile.
+
+    Se mancano i concetti, ne ricava prima una scaletta (così resta traccia) e
+    poi esegue l'intera pipeline. Lo stile è quello del prompt impostato sul libro.
+    """
+    def step(msg):
+        if progress:
+            progress(msg)
+    if not ch.raw_concepts.strip():
+        step("Ricavo una scaletta dal titolo…")
+        try:
+            ch.raw_concepts = engine.outline(book, ch)
+        except Exception:  # noqa: BLE001 - se fallisce, prosegui comunque
+            pass
+    return process_chapter(engine, book, ch, progress)
+
+
+def autodraft_book(engine, book: Book, only_empty: bool = True,
+                   progress: Callable[[str], None] | None = None) -> int:
+    """Autopilota su tutto il libro. Restituisce il numero di capitoli generati."""
+    done = 0
+    targets = [c for c in book.chapters if (not only_empty or not c.text.strip())]
+    for i, ch in enumerate(targets, 1):
+        if progress:
+            progress(f"[{i}/{len(targets)}] «{ch.title}»…")
+        autodraft_chapter(engine, book, ch, progress)
+        done += 1
+    return done
 
 
 def process_chapter(engine, book: Book, ch: Chapter,
@@ -225,3 +506,35 @@ def _strip_code_fences(s: str) -> str:
         s = re.sub(r"^```[a-zA-Z]*\n?", "", s)
         s = re.sub(r"\n?```$", "", s)
     return s.strip()
+
+
+def _parse_review(out: str) -> list[dict]:
+    """Interpreta le righe «PROBLEMA: ... | PERCHÉ: ... | SUGGERIMENTO: ...»."""
+    notes: list[dict] = []
+    for line in out.splitlines():
+        line = line.strip().lstrip("-•*").strip()
+        if "problema" not in line.lower():
+            continue
+        parts = {p.split(":", 1)[0].strip().lower(): p.split(":", 1)[1].strip()
+                 for p in line.split("|") if ":" in p}
+        notes.append({
+            "issue": parts.get("problema", line),
+            "detail": parts.get("perché", parts.get("perche", "")),
+            "suggestion": parts.get("suggerimento", ""),
+            "severity": "warn", "excerpt": "", "source": "ai",
+        })
+    return notes
+
+
+def _parse_claims(out: str) -> list[dict]:
+    """Interpreta le righe «CLAIM: ... | MOTIVO: ...»."""
+    claims: list[dict] = []
+    for line in out.splitlines():
+        line = line.strip().lstrip("-•*").strip()
+        if "claim" not in line.lower():
+            continue
+        parts = {p.split(":", 1)[0].strip().lower(): p.split(":", 1)[1].strip()
+                 for p in line.split("|") if ":" in p}
+        claims.append({"text": parts.get("claim", line),
+                       "reason": parts.get("motivo", ""), "source": "ai"})
+    return claims

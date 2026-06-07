@@ -84,6 +84,18 @@ class MainWindow(QMainWindow):
         chap_btn.setMenu(menu)
         tb.addWidget(chap_btn)
 
+        # menu del mentore / strumenti di crescita e rigore
+        mentor_btn = QToolButton()
+        mentor_btn.setText("🎓 Mentore")
+        mentor_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        mmenu = QMenu(mentor_btn)
+        mmenu.addAction("🔎 Revisione (feedback)", self._open_mentor)
+        mmenu.addAction("📈 Dashboard di crescita", self._open_metrics)
+        mmenu.addAction("🧭 Mappa argomentazione", self._open_argument_map)
+        mmenu.addAction("📚 Bibliografia", self._open_biblio)
+        mentor_btn.setMenu(mmenu)
+        tb.addWidget(mentor_btn)
+
         tb.addSeparator()
         add("📄 Esporta .tex", self._export_tex)
         add("🛠 Compila PDF", self._compile_pdf)
@@ -505,6 +517,44 @@ class MainWindow(QMainWindow):
         self._run_chapter_ai("Riassunto",
                              lambda: self.engine.summarize(ch.text),
                              accept, original=ch.summary)
+
+    # ============================================================ mentore/crescita/rigore
+    def _open_mentor(self):
+        self._commit_current_editors()
+        ch = self._current_chapter()
+        if not ch:
+            return
+        from .mentor_dialog import MentorDialog
+        MentorDialog(self, self.engine, self.book, ch.text).exec()
+
+    def _open_metrics(self):
+        self._commit_current_editors()
+        from .metrics_dialog import MetricsDialog
+        MetricsDialog(self, self.project).exec()
+
+    def _open_argument_map(self):
+        self._commit_current_editors()
+        ch = self._current_chapter()
+        if not ch:
+            return
+        from .argument_dialog import ArgumentMapDialog
+
+        def export(concepts):
+            self.concepts_edit.setPlainText(concepts)
+            self.tabs.setCurrentIndex(0)
+
+        ArgumentMapDialog(self, self.engine, self.book, ch,
+                          on_export_concepts=export).exec()
+
+    def _open_biblio(self):
+        from .biblio_dialog import BiblioDialog
+
+        def insert_cite(cmd):
+            w = self.latex_edit
+            cur = w.textCursor(); cur.insertText(cmd); w.setTextCursor(cur)
+            self.tabs.setCurrentIndex(2)
+
+        BiblioDialog(self, self.project.folder, on_insert_cite=insert_cite).exec()
 
     # ============================================================ salvataggio/output
     def _save(self, silent: bool = False):

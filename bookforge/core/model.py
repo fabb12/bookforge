@@ -16,6 +16,7 @@ class Chapter:
     text: str = ""               # prosa generata dal WriterAgent
     latex: str = ""              # corpo LaTeX (senza \chapter) prodotto dal FormatterAgent
     summary: str = ""            # riassunto breve per risparmiare token nei passaggi futuri
+    argument: dict = field(default_factory=dict)  # mappa dell'argomentazione (structure.ArgumentMap)
     order: int = 0
 
     def to_dict(self) -> dict:

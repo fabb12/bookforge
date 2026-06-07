@@ -72,6 +72,28 @@ capitolo corrente (anche questi con anteprima Accetta/Rifiuta/Rigenera):
   collega il capitolo a quello adiacente, usando i riassunti (risparmio di token).
 - **Rigenera riassunto** — riscrive il riassunto del capitolo nella scheda «Riassunto».
 
+### 🎓 Mentore — crescere come autore (non solo generare)
+Il menu **🎓 Mentore** mette al centro l'apprendimento: dà feedback e strumenti, non
+riscrive al posto tuo.
+
+- **Revisione (feedback)** — analizza il capitolo e mostra **note di stile con il
+  *perché*** (frasi troppo lunghe, passivo, ripetizioni, riempitivi, leggibilità),
+  **domande socratiche** per sviluppare il pensiero, e **claim da verificare/citare**.
+  Funziona già offline (euristiche deterministiche) e con **«Approfondisci con AI»**
+  aggiunge note più ricche. Non riscrive il testo: lo migliori tu.
+- **Dashboard di crescita** — metriche per capitolo (indice **Gulpease**, lunghezza
+  media delle frasi, passivo, varietà lessicale, frasi lunghe). Salva un'**istantanea**
+  in `progress.json` e confronta con la precedente per **vedere i progressi nel tempo**.
+- **Mappa dell'argomentazione** — struttura tesi → argomenti → prove → obiezioni →
+  repliche *prima* di scrivere. Generabile con l'AI, modificabile, ed **esportabile nei
+  «Concetti»** del capitolo per la stesura.
+- **Bibliografia** — gestione di `references.bib` (BibTeX) con aggiunta/modifica voci e
+  inserimento di `\cite{...}` nel LaTeX.
+
+> Filosofia: BookForge è pensato come **potenziamento della creatività** e mentore di
+> scrittura, non come sostituto dell'autore. Ogni proposta dell'AI passa da
+> un'anteprima e da una tua conferma.
+
 ---
 
 ## Le modalità di avvio
@@ -167,17 +189,25 @@ bookforge/
     docx_formatter.py        formattazione .docx: titoli, corpo, immagini, didascalie, indice
     diagram.py               snippet LaTeX per diagrammi/immagini + render Mermaid/Graphviz
     image_gen.py             generazione immagini raster (Google Imagen, pluggable)
+    analysis.py              metriche di leggibilità, note di stile, segnalazione claim
+    structure.py             mappa dell'argomentazione (tesi/argomenti/prove/obiezioni)
+    biblio.py                gestione bibliografia BibTeX (references.bib)
+    progress.py              istantanee delle metriche nel tempo (progress.json)
   agents/
-    engine.py                agenti datapizza-ai + comandi AI (edit/diagram/caption) + fallback
+    engine.py                agenti datapizza-ai + comandi AI (edit/diagram/caption/mentore) + fallback
     commands.py              registro dei comandi di scrittura assistita (menu ↔ engine)
   gui/
     startup.py               dialog Crea/Modifica/Apri cartella LaTeX/Strumenti Word
-    main_window.py           editor capitoli, stile, motore, toolbar
+    main_window.py           editor capitoli, stile, motore, toolbar (AI + Capitolo + Mentore)
     latex_browser.py         browser file + editor per cartelle LaTeX qualsiasi
     docx_dialog.py           dialog «Sistema Word»
     ai_menu.py               controller del menu 🤖 AI (comandi, diagrammi, immagini)
     ai_preview.py            anteprima Accetta/Rifiuta/Rigenera delle proposte AI
     ai_worker.py             QThread generico per le chiamate AI
+    mentor_dialog.py         Modalità Mentore: revisione, domande, claim
+    metrics_dialog.py        Dashboard di crescita (metriche + istantanee)
+    argument_dialog.py       editor della mappa dell'argomentazione
+    biblio_dialog.py         gestione bibliografia + inserimento \cite
     worker.py                QThread per la generazione non bloccante
     docx_worker.py           QThread per la formattazione .docx
     theme.py                 tema dark (QSS)

@@ -159,6 +159,42 @@ IMAGE_PROMPT_PROMPT = (
     "a un modello text-to-image. Restituisci SOLO il prompt, senza virgolette."
 )
 
+# --- modalità mentore: feedback, non riscrittura ---
+REVIEW_PROMPT = (
+    "Sei un mentore di scrittura, non un ghostwriter. Ricevi un brano e fornisci "
+    "FEEDBACK per far crescere l'autore: NON riscrivere il testo. Individua al massimo "
+    "5 punti migliorabili (chiarezza, struttura, logica, stile, ritmo). Per ciascuno "
+    "scrivi una riga nel formato esatto:\n"
+    "PROBLEMA: ... | PERCHÉ: ... | SUGGERIMENTO: ...\n"
+    "Sii concreto e didattico; spiega il PERCHÉ così l'autore impara. Nessun'altra riga."
+)
+
+SOCRATIC_PROMPT = (
+    "Sei un mentore socratico. Leggi il brano e poni da 3 a 5 DOMANDE aperte che aiutino "
+    "l'autore a sviluppare e rafforzare il pensiero (tesi, prove, pubblico, obiezioni, "
+    "esempi). Non dare risposte né riscrivere il testo. Una domanda per riga, senza numeri."
+)
+
+CLAIM_PROMPT = (
+    "Sei un editor attento al rigore. Elenca le affermazioni FATTUALI del brano che "
+    "andrebbero supportate da una fonte o verificate (dati, date, primati, "
+    "generalizzazioni). Per ciascuna una riga nel formato:\n"
+    "CLAIM: ... | MOTIVO: ...\n"
+    "NON inventare fonti e non riscrivere il testo. Solo le righe richieste."
+)
+
+ARGMAP_PROMPT = (
+    "Sei un mentore che aiuta a strutturare un saggio. Dato titolo, argomento e concetti, "
+    "proponi una mappa dell'argomentazione. Usa ESATTAMENTE questo formato, una voce per riga:\n"
+    "TESI: <una frase>\n"
+    "ARGOMENTO: <affermazione>\n"
+    "PROVA: <evidenza a sostegno>\n"
+    "OBIEZIONE: <possibile contro-argomento>\n"
+    "REPLICA: <risposta all'obiezione>\n"
+    "Ripeti ARGOMENTO/PROVA/OBIEZIONE/REPLICA per ogni argomento (2-4 argomenti). "
+    "Nessun commento, nessun'altra riga."
+)
+
 
 # ---------------------------------------------------------------- real engine
 class DatapizzaEngine:
@@ -262,6 +298,29 @@ class DatapizzaEngine:
                if book is not None else "")
         return _strip_code_fences(a.run(ctx + "Richiesta: " + request).text.strip())
 
+    # -- modalità mentore (feedback, non riscrittura) ---------------------
+    def review_notes(self, text: str, book: Book | None = None) -> list[dict]:
+        a = self._agent("mentor", REVIEW_PROMPT)
+        out = a.run(text).text.strip()
+        return _parse_review(out)
+
+    def socratic_questions(self, text: str, book: Book | None = None) -> list[str]:
+        a = self._agent("socratic", SOCRATIC_PROMPT)
+        out = a.run(text).text.strip()
+        return [l.strip(" -•*\t") for l in out.splitlines() if l.strip()]
+
+    def claim_notes(self, text: str, book: Book | None = None) -> list[dict]:
+        a = self._agent("claims", CLAIM_PROMPT)
+        out = a.run(text).text.strip()
+        return _parse_claims(out)
+
+    def argument_map(self, book: Book, ch: Chapter) -> str:
+        a = self._agent("argmapper", ARGMAP_PROMPT)
+        task = (f"Titolo del capitolo: «{ch.title}».\n"
+                f"Argomento del libro: «{book.topic or book.title}».\n"
+                f"Concetti:\n{ch.raw_concepts or ch.text or '(nessuno)'}")
+        return a.run(task).text.strip()
+
 
 # ---------------------------------------------------------------- offline fallback
 class MockEngine:
@@ -340,6 +399,38 @@ class MockEngine:
     def image_prompt(self, request: str, book: Book | None = None) -> str:
         return f"{request.strip()} — detailed illustration, book figure, clean style"
 
+    # -- modalità mentore (offline: euristiche deterministiche) -----------
+    def review_notes(self, text: str, book: Book | None = None) -> list[dict]:
+        from ..core.analysis import heuristic_notes
+        return [{"issue": n.issue, "detail": n.detail, "suggestion": n.suggestion,
+                 "severity": n.severity, "excerpt": n.excerpt, "source": "euristica"}
+                for n in heuristic_notes(text)]
+
+    def socratic_questions(self, text: str, book: Book | None = None) -> list[str]:
+        return [
+            "Qual è la tesi centrale di questo brano, in una frase?",
+            "Quali prove o esempi la sostengono?",
+            "Che obiezione potrebbe sollevare un lettore critico?",
+            "A chi ti stai rivolgendo, e questo testo è adatto a quel pubblico?",
+            "Cosa puoi togliere senza perdere il significato?",
+        ]
+
+    def claim_notes(self, text: str, book: Book | None = None) -> list[dict]:
+        from ..core.analysis import flag_claims
+        return [{"text": f.text, "reason": f.reason, "source": "euristica"}
+                for f in flag_claims(text)]
+
+    def argument_map(self, book: Book, ch: Chapter) -> str:
+        pts = [c.strip() for c in re.split(r"[\n;.]", ch.raw_concepts or ch.text)
+               if c.strip()]
+        lines = [f"TESI: {ch.title}"]
+        for p in pts[:4]:
+            lines.append(f"ARGOMENTO: {p}")
+            lines.append("PROVA: (aggiungi un'evidenza a sostegno)")
+        if len(lines) == 1:
+            lines.append("ARGOMENTO: (primo argomento)")
+        return "\n".join(lines)
+
 
 # ---------------------------------------------------------------- orchestrazione
 def build_engine(config: EngineConfig, force_offline: bool = False):
@@ -383,3 +474,35 @@ def _strip_code_fences(s: str) -> str:
         s = re.sub(r"^```[a-zA-Z]*\n?", "", s)
         s = re.sub(r"\n?```$", "", s)
     return s.strip()
+
+
+def _parse_review(out: str) -> list[dict]:
+    """Interpreta le righe «PROBLEMA: ... | PERCHÉ: ... | SUGGERIMENTO: ...»."""
+    notes: list[dict] = []
+    for line in out.splitlines():
+        line = line.strip().lstrip("-•*").strip()
+        if "problema" not in line.lower():
+            continue
+        parts = {p.split(":", 1)[0].strip().lower(): p.split(":", 1)[1].strip()
+                 for p in line.split("|") if ":" in p}
+        notes.append({
+            "issue": parts.get("problema", line),
+            "detail": parts.get("perché", parts.get("perche", "")),
+            "suggestion": parts.get("suggerimento", ""),
+            "severity": "warn", "excerpt": "", "source": "ai",
+        })
+    return notes
+
+
+def _parse_claims(out: str) -> list[dict]:
+    """Interpreta le righe «CLAIM: ... | MOTIVO: ...»."""
+    claims: list[dict] = []
+    for line in out.splitlines():
+        line = line.strip().lstrip("-•*").strip()
+        if "claim" not in line.lower():
+            continue
+        parts = {p.split(":", 1)[0].strip().lower(): p.split(":", 1)[1].strip()
+                 for p in line.split("|") if ":" in p}
+        claims.append({"text": parts.get("claim", line),
+                       "reason": parts.get("motivo", ""), "source": "ai"})
+    return claims

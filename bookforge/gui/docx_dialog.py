@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 
 from ..core.docx_formatter import DocxFormatRules
 from .docx_worker import DocxFormatWorker
+from .icons import icon, app_icon
 
 
 class DocxFormatDialog(QDialog):
@@ -28,6 +29,7 @@ class DocxFormatDialog(QDialog):
         self.worker: DocxFormatWorker | None = None
 
         self.setWindowTitle("Sistema documento Word")
+        self.setWindowIcon(app_icon())
         self.resize(640, 760)
         self._build_ui()
 
@@ -75,7 +77,8 @@ class DocxFormatDialog(QDialog):
         # pulsanti
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
-        self.run_btn = QPushButton("⚙ Sistema documento"); self.run_btn.setObjectName("Primary")
+        self.run_btn = QPushButton(icon("wrench"), " Sistema documento")
+        self.run_btn.setObjectName("Primary")
         self.run_btn.clicked.connect(self._run)
         close_btn = QPushButton("Chiudi"); close_btn.clicked.connect(self.reject)
         btn_row.addWidget(close_btn); btn_row.addWidget(self.run_btn)

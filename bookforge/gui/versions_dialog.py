@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..core import versioning
+from .icons import icon, app_icon
 
 
 class VersionsDialog(QDialog):
@@ -16,7 +17,8 @@ class VersionsDialog(QDialog):
         self.on_restore = on_restore
         self.versions: list = []
 
-        self.setWindowTitle("🕓 Versioni dell'opera")
+        self.setWindowTitle("Versioni dell'opera")
+        self.setWindowIcon(app_icon())
         self.resize(760, 560)
         self._build_ui()
         self._refresh()
@@ -36,9 +38,10 @@ class VersionsDialog(QDialog):
         body.addWidget(self.diff, 2)
 
         row = QHBoxLayout()
-        save = QPushButton("📸 Salva versione"); save.setObjectName("Primary")
+        save = QPushButton(icon("camera"), " Salva versione"); save.setObjectName("Primary")
         save.clicked.connect(self._save)
-        restore = QPushButton("↩ Ripristina selezionata"); restore.clicked.connect(self._restore)
+        restore = QPushButton(icon("undo"), " Ripristina selezionata")
+        restore.clicked.connect(self._restore)
         close = QPushButton("Chiudi"); close.clicked.connect(self.accept)
         row.addWidget(save); row.addWidget(restore); row.addStretch(1); row.addWidget(close)
         lay.addLayout(row)

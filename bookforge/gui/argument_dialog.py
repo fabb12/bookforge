@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 
 from ..core import structure
 from .ai_worker import AiWorker
+from .icons import icon, app_icon
 
 
 _HELP = ("Una voce per riga. Etichette riconosciute:  TESI:  ARGOMENTO:  PROVA:  "
@@ -29,7 +30,8 @@ class ArgumentMapDialog(QDialog):
         self.on_export_concepts = on_export_concepts
         self._worker: AiWorker | None = None
 
-        self.setWindowTitle(f"🧭 Mappa argomentazione — {chapter.title}")
+        self.setWindowTitle(f"Mappa argomentazione — {chapter.title}")
+        self.setWindowIcon(app_icon())
         self.resize(680, 600)
         self._build_ui()
         self._load()
@@ -44,10 +46,11 @@ class ArgumentMapDialog(QDialog):
         lay.addWidget(self.editor, 1)
 
         row = QHBoxLayout()
-        gen = QPushButton("🤖 Genera con AI"); gen.clicked.connect(self._generate)
-        exp = QPushButton("➡ Esporta in Concetti"); exp.clicked.connect(self._export)
+        gen = QPushButton(icon("cpu"), " Genera con AI"); gen.clicked.connect(self._generate)
+        exp = QPushButton(icon("arrow-right"), " Esporta in Concetti"); exp.clicked.connect(self._export)
         row.addWidget(gen); row.addWidget(exp); row.addStretch(1)
-        save = QPushButton("💾 Salva"); save.setObjectName("Primary"); save.clicked.connect(self._save)
+        save = QPushButton(icon("save"), " Salva"); save.setObjectName("Primary")
+        save.clicked.connect(self._save)
         close = QPushButton("Chiudi"); close.clicked.connect(self.reject)
         row.addWidget(close); row.addWidget(save)
         lay.addLayout(row)

@@ -24,6 +24,13 @@ from ..agents.commands import TEXT_COMMANDS, TextCommand
 from ..core import diagram, image_gen
 from .ai_worker import AiWorker
 from .ai_preview import AiPreviewDialog
+from .icons import icon
+
+# icona minimale associata a ciascun comando di editing testuale (per chiave)
+_COMMAND_ICONS = {
+    "rewrite": "edit", "expand": "plus", "shorten": "minus", "continue": "play",
+    "formal": "cap", "plain": "chat", "fix": "check",
+}
 
 
 class AiEditingController:
@@ -48,15 +55,15 @@ class AiEditingController:
     def _show_menu(self, pos):
         menu = self.w.createStandardContextMenu()
         menu.addSeparator()
-        ai = menu.addMenu("🤖 AI")
+        ai = menu.addMenu(icon("cpu"), "AI")
         has_sel = bool(self._selected_text().strip())
         for cmd in TEXT_COMMANDS:
-            act = ai.addAction(cmd.label)
+            act = ai.addAction(icon(_COMMAND_ICONS.get(cmd.key, "wand")), cmd.label)
             act.setEnabled(has_sel or not cmd.needs_selection)
             act.triggered.connect(lambda _checked=False, c=cmd: self.run_command(c))
         ai.addSeparator()
-        ai.addAction("📊 Genera diagramma…", self.generate_diagram)
-        ai.addAction("🖼 Genera immagine…", self.generate_image)
+        ai.addAction(icon("chart"), "Genera diagramma…", self.generate_diagram)
+        ai.addAction(icon("image"), "Genera immagine…", self.generate_image)
         menu.exec(self.w.mapToGlobal(pos))
 
     # ------------------------------------------------------------------ infra

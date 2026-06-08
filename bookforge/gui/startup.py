@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 
 from ..core.model import Project, Book
 from ..core.settings import AppSettings
+from .icons import icon, app_icon
 
 
 class StartupDialog(QDialog):
@@ -18,6 +19,7 @@ class StartupDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("BookForge — Avvio")
+        self.setWindowIcon(app_icon())
         self.setMinimumWidth(560)
         self.project: Project | None = None
         self.settings = AppSettings.load()
@@ -40,6 +42,12 @@ class StartupDialog(QDialog):
         root.addWidget(self._open_box())
         root.addWidget(self._tools_box())
 
+        # firma: sviluppato da FFA
+        foot = QLabel("Sviluppato da FFA")
+        foot.setObjectName("Subtitle")
+        foot.setAlignment(Qt.AlignmentFlag.AlignRight)
+        root.addWidget(foot)
+
     # ---------------- PROGETTI RECENTI ----------------
     def _recent_box(self) -> QWidget | None:
         """Elenco cliccabile dei progetti aperti di recente (None se vuoto)."""
@@ -50,7 +58,7 @@ class StartupDialog(QDialog):
         lay = QVBoxLayout(box)
         for path in recents:
             p = Path(path)
-            btn = QPushButton(f"📖  {p.name}")
+            btn = QPushButton(icon("book-open"), f"  {p.name}")
             btn.setToolTip(str(p))
             btn.clicked.connect(lambda _=False, fp=str(p): self._open_recent(fp))
             lay.addWidget(btn)
@@ -161,21 +169,25 @@ class StartupDialog(QDialog):
         info.setObjectName("Subtitle"); info.setWordWrap(True)
         lay.addWidget(info)
 
-        b_latex = QPushButton("📥 Converti progetto LaTeX in progetto BookForge…")
+        b_latex = QPushButton(icon("download"), " Converti progetto LaTeX in progetto BookForge…")
         b_latex.clicked.connect(self._do_convert_latex)
         lay.addWidget(b_latex)
 
-        b_word_pdf = QPushButton("📝 Sistema Word → LaTeX → PDF…")
+        b_word_pdf = QPushButton(icon("note"), " Sistema Word → LaTeX → PDF…")
         b_word_pdf.clicked.connect(self._do_word_pdf)
         lay.addWidget(b_word_pdf)
 
-        b_word = QPushButton("🧾 Formatta documento Word (.docx)…")
+        b_word = QPushButton(icon("file-text"), " Formatta documento Word (.docx)…")
         b_word.clicked.connect(self._do_word_tool)
         lay.addWidget(b_word)
 
-        b_settings = QPushButton("⚙ Impostazioni — API e modelli LLM…")
+        b_settings = QPushButton(icon("settings"), " Impostazioni — API e modelli LLM…")
         b_settings.clicked.connect(self._do_settings)
         lay.addWidget(b_settings)
+
+        b_about = QPushButton(icon("info"), " Info — sviluppato da FFA…")
+        b_about.clicked.connect(self._do_about)
+        lay.addWidget(b_about)
         return box
 
     def _build_engine(self):
@@ -218,6 +230,10 @@ class StartupDialog(QDialog):
     def _do_settings(self):
         from .settings_dialog import SettingsDialog
         SettingsDialog(self).exec()
+
+    def _do_about(self):
+        from .about_dialog import AboutDialog
+        AboutDialog(self).exec()
 
     def _do_word_tool(self):
         # apre il formattatore Word come dialog modale, senza chiudere l'avvio

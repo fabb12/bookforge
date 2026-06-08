@@ -18,22 +18,22 @@ class TextCommand:
 
 
 TEXT_COMMANDS: list[TextCommand] = [
-    TextCommand("rewrite", "✍ Riscrivi",
+    TextCommand("rewrite", "Riscrivi",
                 "Riscrivi il brano migliorandone chiarezza e scorrevolezza, "
                 "mantenendo significato, lingua e lunghezza simili."),
-    TextCommand("expand", "➕ Espandi",
+    TextCommand("expand", "Espandi",
                 "Espandi il brano aggiungendo dettagli e approfondimenti pertinenti, "
                 "senza inventare fatti non impliciti."),
-    TextCommand("shorten", "➖ Accorcia",
+    TextCommand("shorten", "Accorcia",
                 "Accorcia il brano mantenendo i concetti chiave; rendilo più conciso."),
-    TextCommand("continue", "⏩ Continua",
+    TextCommand("continue", "Continua",
                 "Continua il testo in modo coerente per uno o due paragrafi.",
                 needs_selection=False),
-    TextCommand("formal", "🎩 Più formale",
+    TextCommand("formal", "Più formale",
                 "Riscrivi il brano con un tono più formale e accademico."),
-    TextCommand("plain", "💬 Più divulgativo",
+    TextCommand("plain", "Più divulgativo",
                 "Riscrivi il brano con un tono più divulgativo e accessibile."),
-    TextCommand("fix", "✅ Correggi",
+    TextCommand("fix", "Correggi",
                 "Correggi ortografia, grammatica e punteggiatura del brano senza "
                 "alterarne il significato."),
 ]

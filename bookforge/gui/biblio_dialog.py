@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..core import biblio
+from .icons import icon, app_icon
 
 
 _TYPES = ["article", "book", "inproceedings", "incollection", "misc", "online"]
@@ -27,7 +28,8 @@ class BiblioDialog(QDialog):
         self.on_insert_cite = on_insert_cite
         self.entries = biblio.load_bib(self.bib_path)
 
-        self.setWindowTitle("📚 Bibliografia")
+        self.setWindowTitle("Bibliografia")
+        self.setWindowIcon(app_icon())
         self.resize(720, 560)
         self._build_ui()
         self._refresh_list()
@@ -54,14 +56,15 @@ class BiblioDialog(QDialog):
         body.addWidget(form_box, 1)
 
         row = QHBoxLayout()
-        new = QPushButton("➕ Nuova"); new.clicked.connect(self._new)
-        save = QPushButton("💾 Salva voce"); save.clicked.connect(self._save_entry)
-        dele = QPushButton("🗑 Elimina"); dele.setObjectName("Danger"); dele.clicked.connect(self._delete)
+        new = QPushButton(icon("plus"), " Nuova"); new.clicked.connect(self._new)
+        save = QPushButton(icon("save"), " Salva voce"); save.clicked.connect(self._save_entry)
+        dele = QPushButton(icon("trash"), " Elimina"); dele.setObjectName("Danger")
+        dele.clicked.connect(self._delete)
         row.addWidget(new); row.addWidget(save); row.addWidget(dele); row.addStretch(1)
         lay.addLayout(row)
 
         row2 = QHBoxLayout()
-        cite = QPushButton("📎 Inserisci \\cite"); cite.setObjectName("Primary")
+        cite = QPushButton(icon("paperclip"), " Inserisci \\cite"); cite.setObjectName("Primary")
         cite.clicked.connect(self._insert_cite)
         close = QPushButton("Chiudi"); close.clicked.connect(self.accept)
         row2.addStretch(1); row2.addWidget(close); row2.addWidget(cite)

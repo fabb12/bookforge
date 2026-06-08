@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 
 from ..core.word_to_latex import WordFixOptions, pandoc_available
 from .word_worker import WordToPdfWorker
+from .icons import icon, app_icon
 
 
 class WordToPdfDialog(QDialog):
@@ -30,6 +31,7 @@ class WordToPdfDialog(QDialog):
         self._last_pdf: Path | None = None
 
         self.setWindowTitle("Word → LaTeX → PDF")
+        self.setWindowIcon(app_icon())
         self.resize(620, 640)
         self._build_ui()
 
@@ -122,10 +124,11 @@ class WordToPdfDialog(QDialog):
         outer.addWidget(self.progress_label)
 
         btn_row = QHBoxLayout(); btn_row.addStretch(1)
-        self.open_btn = QPushButton("👁 Apri PDF"); self.open_btn.setEnabled(False)
+        self.open_btn = QPushButton(icon("eye"), " Apri PDF"); self.open_btn.setEnabled(False)
         self.open_btn.clicked.connect(self._open_pdf)
         close_btn = QPushButton("Chiudi"); close_btn.clicked.connect(self.reject)
-        self.run_btn = QPushButton("⚙ Converti e genera"); self.run_btn.setObjectName("Primary")
+        self.run_btn = QPushButton(icon("wrench"), " Converti e genera")
+        self.run_btn.setObjectName("Primary")
         self.run_btn.clicked.connect(self._run)
         btn_row.addWidget(self.open_btn); btn_row.addWidget(close_btn); btn_row.addWidget(self.run_btn)
         outer.addLayout(btn_row)

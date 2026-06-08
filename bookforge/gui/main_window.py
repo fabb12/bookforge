@@ -17,6 +17,7 @@ from ..core.settings import AppSettings
 from ..agents.engine import EngineConfig, build_engine
 from .worker import GenerateWorker
 from .model_selector import ModelSelector
+from .icons import icon, app_icon
 
 
 class MainWindow(QMainWindow):
@@ -39,6 +40,7 @@ class MainWindow(QMainWindow):
             pass
 
         self.setWindowTitle(f"BookForge — {self.book.title}")
+        self.setWindowIcon(app_icon())
         self.resize(1180, 760)
         self._build_ui()
         self._refresh_chapter_list()
@@ -71,90 +73,97 @@ class MainWindow(QMainWindow):
         bar = self.menuBar()
 
         # --- Progetto: apertura, recenti e chiusura ---
-        self.project_menu = bar.addMenu("📁 Progetto")
+        self.project_menu = bar.addMenu(icon("folder"), "Progetto")
         self._rebuild_project_menu()
 
         # --- Strumenti: conversione progetti e pipeline Word ---
-        tools = bar.addMenu("🛠 Strumenti")
-        tools.addAction("📥 Converti progetto LaTeX in progetto BookForge…",
+        tools = bar.addMenu(icon("wrench"), "Strumenti")
+        tools.addAction(icon("download"), "Converti progetto LaTeX in progetto BookForge…",
                         self._convert_latex_project)
         tools.addSeparator()
-        tools.addAction("📝 Sistema Word → LaTeX → PDF…", self._open_word_pdf)
-        tools.addAction("🧾 Formatta documento Word (.docx)…", self._open_docx_formatter)
+        tools.addAction(icon("note"), "Sistema Word → LaTeX → PDF…", self._open_word_pdf)
+        tools.addAction(icon("file-text"), "Formatta documento Word (.docx)…",
+                        self._open_docx_formatter)
 
         # --- Impostazioni: API e modelli LLM ---
-        settings = bar.addMenu("⚙ Impostazioni")
-        settings.addAction("🔑 API e modelli LLM…", self._open_settings)
+        settings = bar.addMenu(icon("settings"), "Impostazioni")
+        settings.addAction(icon("key"), "API e modelli LLM…", self._open_settings)
+
+        # --- Info: presentazione e autore ---
+        info = bar.addMenu(icon("info"), "Info")
+        info.addAction(icon("info"), "Informazioni su BookForge…", self._open_about)
 
     def _build_toolbar(self):
         tb = self.addToolBar("Azioni")
         tb.setMovable(False)
 
-        def add(text, slot, primary=False, danger=False):
+        def add(text, slot, icon_name=None, primary=False, danger=False):
             b = QPushButton(text)
+            if icon_name:
+                b.setIcon(icon(icon_name))
             if primary: b.setObjectName("Primary")
             if danger: b.setObjectName("Danger")
             b.clicked.connect(slot)
             tb.addWidget(b)
             return b
 
-        add("💾 Salva", self._save)
-        add("🧩 Genera capitolo", self._generate_current, primary=True)
+        def tool_button(text, icon_name):
+            btn = QToolButton()
+            btn.setText(text)
+            btn.setIcon(icon(icon_name))
+            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+            return btn
+
+        add("Salva", self._save, "save")
+        add("Genera capitolo", self._generate_current, "sparkles", primary=True)
 
         # menu dei comandi AI a livello di capitolo
-        chap_btn = QToolButton()
-        chap_btn.setText("🧠 Capitolo (AI)")
-        chap_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        chap_btn = tool_button("Capitolo (AI)", "wand")
         menu = QMenu(chap_btn)
-        menu.addAction("📋 Genera scaletta", self._chapter_outline)
-        menu.addAction("🔗 Migliora raccordi", self._chapter_transitions)
-        menu.addAction("⬅ Ponte col capitolo precedente",
+        menu.addAction(icon("list"), "Genera scaletta", self._chapter_outline)
+        menu.addAction(icon("link"), "Migliora raccordi", self._chapter_transitions)
+        menu.addAction(icon("arrow-left"), "Ponte col capitolo precedente",
                        lambda: self._chapter_bridge("prev"))
-        menu.addAction("➡ Ponte col capitolo successivo",
+        menu.addAction(icon("arrow-right"), "Ponte col capitolo successivo",
                        lambda: self._chapter_bridge("next"))
-        menu.addAction("📝 Rigenera riassunto", self._chapter_resummarize)
+        menu.addAction(icon("note"), "Rigenera riassunto", self._chapter_resummarize)
         chap_btn.setMenu(menu)
         tb.addWidget(chap_btn)
 
         # menu del mentore / strumenti di crescita e rigore
-        mentor_btn = QToolButton()
-        mentor_btn.setText("🎓 Mentore")
-        mentor_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        mentor_btn = tool_button("Mentore", "cap")
         mmenu = QMenu(mentor_btn)
-        mmenu.addAction("🔎 Revisione (feedback)", self._open_mentor)
-        mmenu.addAction("📈 Dashboard di crescita", self._open_metrics)
-        mmenu.addAction("🧭 Mappa argomentazione", self._open_argument_map)
-        mmenu.addAction("📚 Bibliografia", self._open_biblio)
+        mmenu.addAction(icon("search"), "Revisione (feedback)", self._open_mentor)
+        mmenu.addAction(icon("chart"), "Dashboard di crescita", self._open_metrics)
+        mmenu.addAction(icon("compass"), "Mappa argomentazione", self._open_argument_map)
+        mmenu.addAction(icon("book"), "Bibliografia", self._open_biblio)
         mentor_btn.setMenu(mmenu)
         tb.addWidget(mentor_btn)
 
         # menu autogenerazione (autopilota)
-        auto_btn = QToolButton()
-        auto_btn.setText("🚀 Autogenera")
-        auto_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        auto_btn = tool_button("Autogenera", "rocket")
         amenu = QMenu(auto_btn)
-        amenu.addAction("✨ Autogenera capitolo corrente", self._autogen_current)
-        amenu.addAction("📚 Autogenera capitoli vuoti", lambda: self._autogen_all(True))
-        amenu.addAction("♻ Rigenera TUTTI i capitoli", lambda: self._autogen_all(False))
+        amenu.addAction(icon("sparkles"), "Autogenera capitolo corrente", self._autogen_current)
+        amenu.addAction(icon("book"), "Autogenera capitoli vuoti", lambda: self._autogen_all(True))
+        amenu.addAction(icon("refresh"), "Rigenera TUTTI i capitoli", lambda: self._autogen_all(False))
         auto_btn.setMenu(amenu)
         tb.addWidget(auto_btn)
 
         tb.addSeparator()
-        add("📄 Esporta .tex", self._export_tex)
-        add("🛠 Compila PDF", self._compile_pdf)
-        add("📖 Apri in TeXstudio", self._open_texstudio)
-        add("👁 Apri PDF", self._open_pdf)
+        add("Esporta .tex", self._export_tex, "file")
+        add("Compila PDF", self._compile_pdf, "wrench")
+        add("Apri in TeXstudio", self._open_texstudio, "book-open")
+        add("Apri PDF", self._open_pdf, "eye")
 
         # menu export (Markdown / EPUB) + versioni
-        exp_btn = QToolButton()
-        exp_btn.setText("📤 Esporta")
-        exp_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        exp_btn = tool_button("Esporta", "upload")
         xmenu = QMenu(exp_btn)
-        xmenu.addAction("📝 Markdown (.md)", self._export_markdown)
-        xmenu.addAction("📖 EPUB (.epub)", self._export_epub)
+        xmenu.addAction(icon("note"), "Markdown (.md)", self._export_markdown)
+        xmenu.addAction(icon("book-open"), "EPUB (.epub)", self._export_epub)
         exp_btn.setMenu(xmenu)
         tb.addWidget(exp_btn)
-        add("🕓 Versioni", self._open_versions)
+        add("Versioni", self._open_versions, "clock")
 
     def _left_panel(self) -> QWidget:
         w = QWidget()
@@ -166,13 +175,13 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.chapter_list)
 
         row = QHBoxLayout()
-        b_add = QPushButton("➕"); b_add.setToolTip("Aggiungi capitolo")
+        b_add = QPushButton(icon("plus"), ""); b_add.setToolTip("Aggiungi capitolo")
         b_add.clicked.connect(self._add_chapter)
-        b_up = QPushButton("▲"); b_up.setToolTip("Sposta su")
+        b_up = QPushButton(icon("chevron-up"), ""); b_up.setToolTip("Sposta su")
         b_up.clicked.connect(lambda: self._move(-1))
-        b_dn = QPushButton("▼"); b_dn.setToolTip("Sposta giù")
+        b_dn = QPushButton(icon("chevron-down"), ""); b_dn.setToolTip("Sposta giù")
         b_dn.clicked.connect(lambda: self._move(1))
-        b_del = QPushButton("🗑"); b_del.setObjectName("Danger")
+        b_del = QPushButton(icon("trash"), ""); b_del.setObjectName("Danger")
         b_del.setToolTip("Elimina capitolo")
         b_del.clicked.connect(self._delete_chapter)
         for b in (b_add, b_up, b_dn, b_del):
@@ -809,23 +818,23 @@ class MainWindow(QMainWindow):
         """Ricostruisce il menu «Progetto»: apri, recenti, chiudi."""
         m = self.project_menu
         m.clear()
-        m.addAction("📂 Apri progetto…", self._open_project)
+        m.addAction(icon("folder-open"), "Apri progetto…", self._open_project)
 
         # sottomenu dei recenti: sempre presente (così è scopribile), ma
         # disabilitato quando non c'è altro progetto recente oltre a quello aperto
         recents = [p for p in self.app_settings.clean_recent_projects()
                    if str(p) != str(self.project.folder.resolve())]
-        sub = m.addMenu("🕘 Progetti recenti")
+        sub = m.addMenu(icon("clock"), "Progetti recenti")
         if recents:
             for path in recents:
                 name = Path(path).name
-                act = sub.addAction(f"📖 {name}",
+                act = sub.addAction(icon("book-open"), name,
                                     lambda _=False, fp=str(path): self._open_recent_project(fp))
                 act.setToolTip(str(path))
         else:
             sub.setEnabled(False)
         m.addSeparator()
-        m.addAction("✖ Chiudi progetto", self._close_project)
+        m.addAction(icon("x"), "Chiudi progetto", self._close_project)
 
     def _open_project(self):
         d = QFileDialog.getExistingDirectory(self, "Apri cartella progetto")
@@ -918,6 +927,10 @@ class MainWindow(QMainWindow):
         self.e_status.setText(msg)
         self.statusBar().showMessage(msg, 5000)
         self._warn_if_offline(self.engine_config.api_key)
+
+    def _open_about(self):
+        from .about_dialog import AboutDialog
+        AboutDialog(self).exec()
 
     def closeEvent(self, event):
         self._save(silent=True)

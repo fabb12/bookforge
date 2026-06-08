@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 
 from ..core.settings import AppSettings, PROVIDERS, DEFAULT_MODELS
 from .model_selector import ModelSelector
+from .icons import app_icon
 
 
 class SettingsDialog(QDialog):
@@ -27,6 +28,7 @@ class SettingsDialog(QDialog):
         self._keys = dict(self.settings.api_keys)   # copia di lavoro per-provider
 
         self.setWindowTitle("Impostazioni — API e modelli LLM")
+        self.setWindowIcon(app_icon())
         self.setMinimumWidth(560)
         self._build_ui()
         self._load_provider(self.settings.provider)

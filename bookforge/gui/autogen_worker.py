@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from ..agents.engine import autodraft_chapter, autodraft_book, GenerationCancelled
+from ..agents.engine import (autodraft_chapter, autodraft_book,
+                             GenerationCancelled, friendly_engine_error)
 
 
 class AutogenWorker(QThread):
@@ -38,4 +39,4 @@ class AutogenWorker(QThread):
         except GenerationCancelled:
             self.cancelled.emit()
         except Exception as e:  # noqa: BLE001
-            self.failed.emit(str(e))
+            self.failed.emit(friendly_engine_error(e))

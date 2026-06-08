@@ -4,9 +4,33 @@ import pytest
 from bookforge.agents.engine import (
     build_engine, EngineConfig, autodraft_book, autodraft_chapter,
     process_chapter, _parse_review, _parse_claims, _accepts_temperature,
-    GenerationCancelled,
+    GenerationCancelled, friendly_engine_error,
 )
 from bookforge.core.model import Book
+
+
+def test_api_key_normalizzata():
+    # spazi e «a capo» incollati per errore romperebbero l'header x-api-key (401)
+    cfg = EngineConfig(provider=" Anthropic ", model=" claude-opus-4-8 ",
+                       api_key="  sk-ant-abc\n")
+    assert cfg.api_key == "sk-ant-abc"
+    assert cfg.provider == "anthropic"
+    assert cfg.model == "claude-opus-4-8"
+
+
+def test_chiave_di_soli_spazi_resta_offline():
+    # una chiave fatta di soli spazi va trattata come assente → MockEngine
+    eng, real, _ = build_engine(EngineConfig(provider="anthropic", api_key="   \n"))
+    assert real is False
+
+
+def test_friendly_error_autenticazione():
+    msg = friendly_engine_error(Exception(
+        "Error code: 401 - {'type': 'authentication_error', "
+        "'message': 'invalid x-api-key'}"))
+    assert "401" in msg and "Impostazioni" in msg
+    # gli altri errori restano invariati
+    assert friendly_engine_error(ValueError("boom")) == "boom"
 
 
 def test_temperature_omessa_per_claude_recenti():

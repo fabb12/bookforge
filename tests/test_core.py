@@ -159,11 +159,42 @@ def test_latex_special_sections_and_cover():
     assert r"\includegraphics" in tex and "images/cop.png" in tex
 
 
+def test_latex_bibliography_emitted_only_with_database():
+    # senza database BibTeX non si emette nulla; con database sì
+    b = Book(title="T")
+    b.add_chapter("Cap").latex = "Vedi \\cite{tizio2020}."
+    assert "\\bibliography" not in latex_builder.build_latex(b)
+    tex = latex_builder.build_latex(b, bib_database="references")
+    assert r"\bibliographystyle{plain}" in tex
+    assert r"\bibliography{references}" in tex
+
+
 # --------------------------------------------------------------- compiler
 def test_find_latex_tool_handles_missing(monkeypatch):
     # se l'eseguibile non è da nessuna parte, la ricerca non deve sollevare eccezioni
     monkeypatch.setattr(compiler.shutil, "which", lambda name: None)
     assert compiler.find_latex_tool("pdflatex-inesistente-xyz") is None
+
+
+def test_write_tex_activates_bibliography_when_bib_present(tmp_path):
+    # con references.bib nella cartella, il .tex generato include la bibliografia
+    p = Project(tmp_path, Book(title="T"))
+    p.book.add_chapter("Cap").latex = "Vedi \\cite{tizio2020}."
+    (tmp_path / "references.bib").write_text(
+        "@book{tizio2020, title={X}, author={Tizio}, year={2020}}\n",
+        encoding="utf-8")
+    tex = compiler.write_tex(p).read_text(encoding="utf-8")
+    assert r"\bibliography{references}" in tex
+
+
+def test_needs_bibtex_detects_citations(tmp_path):
+    tex = tmp_path / "book.tex"
+    tex.write_text("dummy", encoding="utf-8")
+    aux = tmp_path / "book.aux"
+    aux.write_text("\\relax\n", encoding="utf-8")
+    assert compiler._needs_bibtex(tex) is False
+    aux.write_text("\\citation{tizio2020}\n\\bibdata{references}\n", encoding="utf-8")
+    assert compiler._needs_bibtex(tex) is True
 
 
 # --------------------------------------------------------------- model

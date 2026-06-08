@@ -75,7 +75,10 @@ def _env_with_tool(tool_path: str) -> dict:
 
 def write_tex(project: Project) -> Path:
     project.folder.mkdir(parents=True, exist_ok=True)
-    tex = build_latex(project.book)
+    # Se il progetto ha un references.bib, attiva la bibliografia nel .tex così
+    # che BibTeX abbia qualcosa da elaborare (vedi _run_pdflatex).
+    bib = "references" if (project.folder / "references.bib").exists() else None
+    tex = build_latex(project.book, bib_database=bib)
     project.tex_path.write_text(tex, encoding="utf-8")
     return project.tex_path
 
@@ -149,22 +152,67 @@ def compile_pdf(project: Project) -> tuple[bool, str]:
     return compile_tex(tex_path)
 
 
+def _pdflatex_pass(pdflatex: str, tex_path: Path, cwd: str,
+                   env: dict) -> subprocess.CompletedProcess:
+    """Una passata di `pdflatex` in `nonstopmode` (come TeXstudio).
+
+    Niente `-halt-on-error`: un errore recuperabile non deve impedire la
+    generazione del PDF (è il motivo per cui in TeXstudio compila e qui no).
+    """
+    return subprocess.run(
+        [pdflatex, "-interaction=nonstopmode", tex_path.name],
+        cwd=cwd, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=300, env=env)
+
+
+def _needs_bibtex(tex_path: Path) -> bool:
+    """Vero se l'.aux generato contiene citazioni/bibliografia da risolvere.
+
+    Dopo la prima passata di pdflatex, l'.aux riporta `\\citation` e `\\bibdata`
+    solo se il documento usa davvero una bibliografia BibTeX: in tal caso va
+    eseguito `bibtex`.
+    """
+    aux = tex_path.with_suffix(".aux")
+    try:
+        txt = aux.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    return "\\bibdata" in txt or "\\citation" in txt
+
+
 def _run_pdflatex(tex_path: Path, cwd: str) -> tuple[bool, str] | None:
-    """Compila con `pdflatex` (due passate). Restituisce (ok, log) o None se
-    `pdflatex` non è installato."""
+    """Compila con `pdflatex`, eseguendo `bibtex` se serve. Restituisce
+    (ok, log) o None se `pdflatex` non è installato.
+
+    Sequenza: pdflatex → (bibtex + 2 passate) se c'è bibliografia, altrimenti
+    una seconda passata per indice e riferimenti incrociati.
+    """
     pdflatex = find_latex_tool("pdflatex")
     if not pdflatex:
         return None
     env = _env_with_tool(pdflatex)
-    r = None
-    for _ in range(2):  # due passate per indice e riferimenti
-        r = subprocess.run(
-            [pdflatex, "-interaction=nonstopmode", "-halt-on-error",
-             tex_path.name],
-            cwd=cwd, capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=300, env=env)
+    bib_log = ""
+
+    r = _pdflatex_pass(pdflatex, tex_path, cwd, env)
+    if _needs_bibtex(tex_path):
+        bibtex = find_latex_tool("bibtex")
+        if bibtex:
+            rb = subprocess.run(
+                [bibtex, tex_path.stem],
+                cwd=cwd, capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=300, env=env)
+            bib_log = "--- bibtex ---\n" + (rb.stdout or "") + (rb.stderr or "")
+        else:
+            bib_log = ("--- bibtex ---\nbibtex non trovato: la bibliografia "
+                       "non sarà risolta. Installa BibTeX (incluso in MiKTeX/"
+                       "TeX Live).\n")
+        for _ in range(2):  # due passate perché le citazioni si stabilizzino
+            r = _pdflatex_pass(pdflatex, tex_path, cwd, env)
+    else:
+        r = _pdflatex_pass(pdflatex, tex_path, cwd, env)  # indice e riferimenti
+
     pdf = tex_path.with_suffix(".pdf")
-    log = (r.stdout[-4000:] if r else "") + (r.stderr[-2000:] if r else "")
+    log = bib_log + (r.stdout[-4000:] if r else "") + (r.stderr[-2000:] if r else "")
     if pdf.exists():
         return True, f"PDF generato: {pdf}\n\n--- log ---\n{log}"
     return False, f"Compilazione fallita.\n\n--- log ---\n{log}"

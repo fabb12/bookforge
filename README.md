@@ -17,6 +17,11 @@ compilare in **TeXstudio**.
 pip install -r requirements.txt
 ```
 
+**Windows (tutto-in-uno):** esegui `setup_windows.bat` (doppio clic, meglio
+«Esegui come amministratore»). Installa le dipendenze Python e gli strumenti di
+sistema (pandoc, MiKTeX, Graphviz, Node.js + Mermaid CLI) via `winget`/`npm`, così
+che `python main.py` funzioni subito. Riapri il terminale al termine.
+
 Requisiti:
 - Python 3.10 – 3.12
 - Una distribuzione LaTeX (TeX Live o MiKTeX) — per la compilazione del PDF

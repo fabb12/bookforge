@@ -184,10 +184,6 @@ class StartupDialog(QDialog):
         b_settings = QPushButton(icon("settings"), " Impostazioni — API e modelli LLM…")
         b_settings.clicked.connect(self._do_settings)
         lay.addWidget(b_settings)
-
-        b_about = QPushButton(icon("info"), " Info — sviluppato da FFA…")
-        b_about.clicked.connect(self._do_about)
-        lay.addWidget(b_about)
         return box
 
     def _build_engine(self):
@@ -230,10 +226,6 @@ class StartupDialog(QDialog):
     def _do_settings(self):
         from .settings_dialog import SettingsDialog
         SettingsDialog(self).exec()
-
-    def _do_about(self):
-        from .about_dialog import AboutDialog
-        AboutDialog(self).exec()
 
     def _do_word_tool(self):
         # apre il formattatore Word come dialog modale, senza chiudere l'avvio

@@ -4,8 +4,11 @@ Riferimento per agenti: evita di ri-esplorare il codice. Aggiornare quando si
 aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
 
 ## Entry point
-- `main.py` — crea `QApplication`, applica il tema, mostra `StartupDialog`, poi apre
-  `MainWindow` (progetto) **oppure** `LatexBrowserWindow` (cartella LaTeX libera).
+- `main.py` — crea `QApplication`, applica il tema, mostra `StartupDialog`, poi apre la
+  finestra giusta tramite `gui/launcher.window_for_startup`.
+- `gui/launcher.py` — `window_for_startup(startup)` costruisce `MainWindow` (progetto)
+  **oppure** `LatexBrowserWindow` (cartella LaTeX libera). Condiviso da `main.py` e da
+  «Chiudi progetto»; tiene in vita le finestre aperte.
 
 ## `bookforge/core/` — logica pura (no PyQt, no rete)
 | File | Cosa fa | API principali |
@@ -24,7 +27,7 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
 | `export.py` | Export Markdown/EPUB | `build_markdown`, `write_markdown`, `build_epub` (pandoc o writer interno) |
 | `latex_import.py` | Importa un progetto LaTeX in un `Book` | `latex_to_book`, `import_latex_project`, `convert_latex_to_project` (risolve `\input`, estrae metadati e capitoli) |
 | `word_to_latex.py` | Pipeline Word→LaTeX→PDF (pandoc + sistemazioni pure) | `WordFixOptions`, `convert_word`, `postprocess_latex`, `proofread_latex`, `pandoc_available` |
-| `settings.py` | Impostazioni globali LLM persistenti (`~/.bookforge/settings.json`) | `AppSettings` (provider/modello/chiavi per-provider/temperatura/max_tokens), `settings_path` |
+| `settings.py` | Impostazioni globali LLM persistenti (`~/.bookforge/settings.json`) | `AppSettings` (provider/modello/chiavi per-provider/temperatura/max_tokens/recent_projects + `add_recent_project`/`clean_recent_projects`), `PROVIDERS`, `DEFAULT_MODELS`, `AVAILABLE_MODELS`, `models_for`, `settings_path` |
 
 ## `bookforge/agents/` — orchestrazione AI
 - `engine.py`:
@@ -40,7 +43,8 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
   un'istruzione NL passata a `engine.edit_text`.
 
 ## `bookforge/gui/` — interfaccia (PyQt6)
-- `startup.py` — `StartupDialog`: crea/apri progetto, apri cartella LaTeX, strumenti Word.
+- `startup.py` — `StartupDialog`: progetti recenti (cliccabili), crea/apri progetto, apri
+  cartella LaTeX, strumenti Word.
 - `main_window.py` — `MainWindow`: lista capitoli, schede (Concetti/Testo/LaTeX/Riassunto),
   pannello Stile, toolbar. Hub che apre tutti i dialog e avvia i worker.
 - `latex_browser.py` — `LatexBrowserWindow`: editor di una cartella LaTeX qualsiasi.

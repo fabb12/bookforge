@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..core.model import Project, Book
+from ..core.settings import AppSettings
 
 
 class StartupDialog(QDialog):
@@ -20,6 +21,7 @@ class StartupDialog(QDialog):
         self.setMinimumWidth(560)
         self.project: Project | None = None
         self.latex_folder: Path | None = None   # cartella da aprire nel browser file
+        self.settings = AppSettings.load()
 
         root = QVBoxLayout(self)
         root.setSpacing(16)
@@ -32,10 +34,41 @@ class StartupDialog(QDialog):
         root.addWidget(title)
         root.addWidget(sub)
 
+        recent = self._recent_box()
+        if recent is not None:
+            root.addWidget(recent)
         root.addWidget(self._create_box())
         root.addWidget(self._open_box())
         root.addWidget(self._browse_box())
         root.addWidget(self._tools_box())
+
+    # ---------------- PROGETTI RECENTI ----------------
+    def _recent_box(self) -> QWidget | None:
+        """Elenco cliccabile dei progetti aperti di recente (None se vuoto)."""
+        recents = self.settings.clean_recent_projects()
+        if not recents:
+            return None
+        box = QGroupBox("Progetti recenti")
+        lay = QVBoxLayout(box)
+        for path in recents:
+            p = Path(path)
+            btn = QPushButton(f"📖  {p.name}")
+            btn.setToolTip(str(p))
+            btn.clicked.connect(lambda _=False, fp=str(p): self._open_recent(fp))
+            lay.addWidget(btn)
+        return box
+
+    def _open_recent(self, folder: str):
+        if not Project.is_project(folder):
+            QMessageBox.warning(self, "Non disponibile",
+                                "Il progetto non esiste più o è stato spostato.")
+            return
+        try:
+            self.project = Project.load(folder)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "Errore", f"Impossibile aprire il progetto:\n{e}")
+            return
+        self.accept()
 
     # ---------------- CREA ----------------
     def _create_box(self) -> QWidget:

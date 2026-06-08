@@ -1,6 +1,8 @@
 """Finestra principale di BookForge: editor capitoli + agenti + compilazione."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QListWidget,
@@ -11,7 +13,7 @@ from PyQt6.QtWidgets import (
 
 from ..core.model import Project, Chapter
 from ..core import compiler
-from ..core.settings import AppSettings
+from ..core.settings import AppSettings, models_for
 from ..agents.engine import EngineConfig, build_engine
 from .worker import GenerateWorker
 
@@ -27,6 +29,13 @@ class MainWindow(QMainWindow):
         self.app_settings = AppSettings.load()
         self.engine_config = EngineConfig.from_settings(self.app_settings)
         self.engine, self.engine_real, msg = build_engine(self.engine_config)
+
+        # registra il progetto tra i recenti (per la schermata iniziale e il menu)
+        self.app_settings.add_recent_project(self.project.folder)
+        try:
+            self.app_settings.save()
+        except Exception:  # noqa: BLE001 - non bloccante
+            pass
 
         self.setWindowTitle(f"BookForge — {self.book.title}")
         self.resize(1180, 760)
@@ -59,6 +68,10 @@ class MainWindow(QMainWindow):
 
     def _build_menubar(self):
         bar = self.menuBar()
+
+        # --- Progetto: apertura, recenti e chiusura ---
+        self.project_menu = bar.addMenu("📁 Progetto")
+        self._rebuild_project_menu()
 
         # --- Strumenti: conversione progetti e pipeline Word ---
         tools = bar.addMenu("🛠 Strumenti")
@@ -141,9 +154,6 @@ class MainWindow(QMainWindow):
         exp_btn.setMenu(xmenu)
         tb.addWidget(exp_btn)
         add("🕓 Versioni", self._open_versions)
-
-        tb.addSeparator()
-        add("📂 File progetto", self._open_file_browser)
 
     def _left_panel(self) -> QWidget:
         w = QWidget()
@@ -291,7 +301,10 @@ class MainWindow(QMainWindow):
         eng = QWidget(); eform = QFormLayout(eng)
         self.e_provider = QComboBox(); self.e_provider.addItems(["openai", "anthropic", "google"])
         self.e_provider.setCurrentText(self.engine_config.provider)
-        self.e_model = QLineEdit(self.engine_config.model)
+        # modello: tendina con i modelli disponibili del provider, ma editabile
+        self.e_model = QComboBox(); self.e_model.setEditable(True)
+        self.e_provider.currentTextChanged.connect(self._on_engine_provider_changed)
+        self._reload_engine_models(self.engine_config.provider, self.engine_config.model)
         self.e_key = QLineEdit(self.engine_config.api_key)
         self.e_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.e_key.setPlaceholderText("Lascia vuoto per modalità offline (test)")
@@ -428,15 +441,55 @@ class MainWindow(QMainWindow):
         self.s_prompt.setPlainText(content)
         self.statusBar().showMessage(f"Prompt di stile caricato da {path}", 4000)
 
+    def _reload_engine_models(self, provider: str, selected: str = ""):
+        """Popola la tendina dei modelli del pannello «Motore» per il provider scelto."""
+        self.e_model.blockSignals(True)
+        self.e_model.clear()
+        self.e_model.addItems(models_for(provider))
+        self.e_model.setCurrentText(selected or "")
+        self.e_model.blockSignals(False)
+
+    def _on_engine_provider_changed(self, provider: str):
+        self._reload_engine_models(provider)
+
     def _apply_engine(self):
+        provider = self.e_provider.currentText()
+        model = self.e_model.currentText().strip()
+        key = self.e_key.text().strip()
+        # mantiene i parametri di campionamento dalle impostazioni globali
         self.engine_config = EngineConfig(
-            provider=self.e_provider.currentText(),
-            model=self.e_model.text().strip(),
-            api_key=self.e_key.text().strip(),
+            provider=provider, model=model, api_key=key,
+            temperature=self.app_settings.temperature,
+            max_tokens=self.app_settings.max_tokens,
         )
         self.engine, self.engine_real, msg = build_engine(self.engine_config)
         self.e_status.setText(msg)
         self.statusBar().showMessage(msg, 5000)
+        # persiste la scelta così resta valida al prossimo avvio
+        self.app_settings.provider = provider
+        self.app_settings.model = model
+        if key:
+            self.app_settings.set_api_key(provider, key)
+        try:
+            self.app_settings.save()
+        except Exception:  # noqa: BLE001 - non bloccante
+            pass
+        self._warn_if_offline(key)
+
+    def _warn_if_offline(self, key: str):
+        """Se è stata fornita una chiave ma il motore reale non parte, spiega perché.
+
+        Evita il malinteso «ho impostato un LLM ma le funzioni restano simulate»:
+        il fallback offline ora è esplicito invece di passare inosservato.
+        """
+        if key and not self.engine_real:
+            QMessageBox.warning(
+                self, "Modello non attivo",
+                "È stata impostata una chiave API ma il modello reale non è stato "
+                "attivato: le funzioni AI useranno il motore offline (testo simulato).\n\n"
+                f"Dettaglio: {self.e_status.text()}\n\n"
+                "Verifica che il client del provider sia installato "
+                "(es. datapizza-ai-clients-…) e che chiave/modello siano corretti.")
 
     # ============================================================ generazione
     def _generate_current(self):
@@ -744,18 +797,6 @@ class MainWindow(QMainWindow):
         if not ok:
             QMessageBox.warning(self, "PDF", msg)
 
-    def _open_file_browser(self):
-        # esporta prima il .tex così è disponibile nel browser dei file
-        self._save(silent=True)
-        try:
-            compiler.write_tex(self.project)
-        except Exception:  # noqa: BLE001 - non bloccante
-            pass
-        from .latex_browser import LatexBrowserWindow
-        self._browser = LatexBrowserWindow(
-            self.project.folder, engine=self.engine, engine_real=self.engine_real)
-        self._browser.show()
-
     def _open_docx_formatter(self):
         from .docx_dialog import DocxFormatDialog
         dlg = DocxFormatDialog(self, engine=self.engine, engine_real=self.engine_real)
@@ -765,6 +806,71 @@ class MainWindow(QMainWindow):
         from .word_pdf_dialog import WordToPdfDialog
         dlg = WordToPdfDialog(self, engine=self.engine, engine_real=self.engine_real)
         dlg.exec()
+
+    # ============================================================ progetto
+    def _rebuild_project_menu(self):
+        """Ricostruisce il menu «Progetto»: apri, recenti, chiudi."""
+        m = self.project_menu
+        m.clear()
+        m.addAction("📂 Apri progetto…", self._open_project)
+
+        recents = [p for p in self.app_settings.clean_recent_projects()
+                   if str(p) != str(self.project.folder.resolve())]
+        if recents:
+            sub = m.addMenu("🕘 Progetti recenti")
+            for path in recents:
+                name = Path(path).name
+                sub.addAction(f"📖 {name}",
+                              lambda _=False, fp=str(path): self._open_recent_project(fp))
+        m.addSeparator()
+        m.addAction("✖ Chiudi progetto", self._close_project)
+
+    def _open_project(self):
+        d = QFileDialog.getExistingDirectory(self, "Apri cartella progetto")
+        if not d:
+            return
+        if not Project.is_project(d):
+            QMessageBox.warning(self, "Non valido",
+                                "La cartella selezionata non contiene un progetto BookForge.")
+            return
+        try:
+            project = Project.load(d)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "Errore", f"Impossibile aprire il progetto:\n{e}")
+            return
+        self._switch_to_project(project)
+
+    def _open_recent_project(self, folder: str):
+        if not Project.is_project(folder):
+            QMessageBox.warning(self, "Non disponibile",
+                                "Il progetto non esiste più o è stato spostato.")
+            return
+        try:
+            project = Project.load(folder)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "Errore", f"Impossibile aprire il progetto:\n{e}")
+            return
+        self._switch_to_project(project)
+
+    def _switch_to_project(self, project: Project):
+        """Salva il progetto corrente e apre quello indicato in una nuova finestra."""
+        self._save(silent=True)
+        win = MainWindow(project)
+        win.show()
+        self.close()
+
+    def _close_project(self):
+        """Chiude il progetto e torna alla schermata iniziale."""
+        self._save(silent=True)
+        from .startup import StartupDialog
+        from .launcher import window_for_startup
+        dlg = StartupDialog(self)
+        if dlg.exec() != StartupDialog.DialogCode.Accepted:
+            return  # l'utente ha annullato: resta sul progetto corrente
+        win = window_for_startup(dlg)
+        if win is not None:
+            win.show()
+            self.close()
 
     # ============================================================ strumenti
     def _convert_latex_project(self):
@@ -805,10 +911,11 @@ class MainWindow(QMainWindow):
         self.engine, self.engine_real, msg = build_engine(self.engine_config)
         # tiene allineata la scheda «Motore» del pannello destro
         self.e_provider.setCurrentText(self.engine_config.provider)
-        self.e_model.setText(self.engine_config.model)
+        self._reload_engine_models(self.engine_config.provider, self.engine_config.model)
         self.e_key.setText(self.engine_config.api_key)
         self.e_status.setText(msg)
         self.statusBar().showMessage(msg, 5000)
+        self._warn_if_offline(self.engine_config.api_key)
 
     def closeEvent(self, event):
         self._save(silent=True)

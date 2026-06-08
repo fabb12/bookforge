@@ -1,6 +1,7 @@
 """Scrittura del .tex, compilazione (latexmk/pdflatex) e apertura in TeXstudio."""
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -8,6 +9,59 @@ from pathlib import Path
 
 from .latex_builder import build_latex
 from .model import Project
+
+
+def _latex_search_dirs() -> list[Path]:
+    """Cartelle bin tipiche di MiKTeX / TeX Live, oltre al PATH.
+
+    Serve su Windows: dopo l'installazione MiKTeX spesso non è ancora nel PATH
+    (o lo è solo dopo un riavvio), quindi `shutil.which` da solo non lo trova.
+    """
+    home = Path.home()
+    dirs = [
+        # MiKTeX (installazione per-utente e di sistema)
+        home / "AppData/Local/Programs/MiKTeX/miktex/bin/x64",
+        home / "AppData/Local/Programs/MiKTeX/miktex/bin",
+        Path(r"C:/Program Files/MiKTeX/miktex/bin/x64"),
+        Path(r"C:/Program Files (x86)/MiKTeX/miktex/bin/x64"),
+        Path(r"C:/Program Files/MiKTeX 2.9/miktex/bin/x64"),
+        Path(r"C:/Program Files (x86)/MiKTeX 2.9/miktex/bin"),
+    ]
+    # TeX Live: annate e piattaforme diverse
+    for base in (Path(r"C:/texlive"), Path("/usr/local/texlive"),
+                 Path("/opt/texlive")):
+        if base.is_dir():
+            for year in sorted(base.glob("20*"), reverse=True):
+                bins = year / "bin"
+                if bins.is_dir():
+                    dirs.extend(p for p in bins.iterdir() if p.is_dir())
+    return dirs
+
+
+def find_latex_tool(name: str) -> str | None:
+    """Trova un eseguibile LaTeX (`latexmk`/`pdflatex`) nel PATH o, in mancanza,
+    nelle posizioni tipiche di MiKTeX / TeX Live. Restituisce il percorso o None."""
+    p = shutil.which(name)
+    if p:
+        return p
+    exe = name + (".exe" if sys.platform.startswith("win") else "")
+    for d in _latex_search_dirs():
+        cand = d / exe
+        if cand.exists():
+            return str(cand)
+    return None
+
+
+def _env_with_tool(tool_path: str) -> dict:
+    """Ambiente con la cartella dello strumento in testa al PATH.
+
+    Così `latexmk` trovato fuori dal PATH riesce comunque a invocare `pdflatex`
+    (e gli altri programmi) della stessa distribuzione.
+    """
+    env = os.environ.copy()
+    bindir = str(Path(tool_path).parent)
+    env["PATH"] = bindir + os.pathsep + env.get("PATH", "")
+    return env
 
 
 def write_tex(project: Project) -> Path:
@@ -96,27 +150,30 @@ def compile_tex(tex_path: str | Path) -> tuple[bool, str]:
     if not tex_path.exists():
         return False, f"File .tex non trovato: {tex_path}"
     cwd = str(tex_path.parent)
-    latexmk = shutil.which("latexmk")
+    latexmk = find_latex_tool("latexmk")
     try:
         if latexmk:
             r = subprocess.run(
                 [latexmk, "-pdf", "-f", "-interaction=nonstopmode",
                  tex_path.name],
                 cwd=cwd, capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=300)
+                encoding="utf-8", errors="replace", timeout=300,
+                env=_env_with_tool(latexmk))
         else:
-            pdflatex = shutil.which("pdflatex")
+            pdflatex = find_latex_tool("pdflatex")
             if not pdflatex:
                 return False, ("Né latexmk né pdflatex trovati. Installa una "
-                               "distribuzione LaTeX (TeX Live / MiKTeX) oppure "
-                               "compila direttamente in TeXstudio.")
+                               "distribuzione LaTeX (TeX Live / MiKTeX) — se l'hai "
+                               "appena installata, riavvia BookForge perché il PATH "
+                               "venga aggiornato — oppure compila in TeXstudio.")
+            env = _env_with_tool(pdflatex)
             r = None
             for _ in range(2):  # due passate per indice e riferimenti
                 r = subprocess.run(
                     [pdflatex, "-interaction=nonstopmode", "-halt-on-error",
                      tex_path.name],
                     cwd=cwd, capture_output=True, text=True,
-                    encoding="utf-8", errors="replace", timeout=300)
+                    encoding="utf-8", errors="replace", timeout=300, env=env)
         pdf = tex_path.with_suffix(".pdf")
         log = (r.stdout[-4000:] if r else "") + (r.stderr[-2000:] if r else "")
         if pdf.exists():

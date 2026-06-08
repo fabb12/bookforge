@@ -3,7 +3,7 @@ import zipfile
 
 from bookforge.core import (
     analysis, structure, biblio, progress, versioning, export, diagram,
-    latex_builder,
+    latex_builder, compiler,
 )
 from bookforge.core.model import Book, Project
 
@@ -143,17 +143,46 @@ def test_latex_escape_and_build():
     assert "\\documentclass" in tex and "\\chapter{Cap}" in tex and "\\end{document}" in tex
 
 
+def test_latex_special_sections_and_cover():
+    # premessa, prologo, epilogo, intermezzo e immagine di copertina nel .tex
+    b = Book(title="T", cover_image="images/cop.png")
+    b.premise = "La mia premessa."
+    b.prologue = "Il mio prologo."
+    b.epilogue = "Il mio epilogo."
+    ch = b.add_chapter("Cap"); ch.latex = "Corpo."
+    ch.intermezzo = "Un respiro tra i capitoli."
+    tex = latex_builder.build_latex(b)
+    assert r"\chapter*{Premessa}" in tex and "La mia premessa." in tex
+    assert r"\chapter*{Prologo}" in tex and "Il mio prologo." in tex
+    assert r"\chapter*{Epilogo}" in tex and "Il mio epilogo." in tex
+    assert "Un respiro tra i capitoli." in tex
+    assert r"\includegraphics" in tex and "images/cop.png" in tex
+
+
+# --------------------------------------------------------------- compiler
+def test_find_latex_tool_handles_missing(monkeypatch):
+    # se l'eseguibile non è da nessuna parte, la ricerca non deve sollevare eccezioni
+    monkeypatch.setattr(compiler.shutil, "which", lambda name: None)
+    assert compiler.find_latex_tool("pdflatex-inesistente-xyz") is None
+
+
 # --------------------------------------------------------------- model
 def test_model_roundtrip_with_new_fields(tmp_path):
-    b = Book(title="T")
+    b = Book(title="T", cover_image="images/c.png")
     b.style.mode = "autopilota"
+    b.premise = "pre"; b.prologue = "pro"; b.epilogue = "epi"
     c = b.add_chapter("Cap")
     c.argument = {"thesis": "x", "arguments": []}
+    c.intermezzo = "interludio"
     b2 = Book.from_dict(b.to_dict())
     assert b2.style.mode == "autopilota"
     assert b2.chapters[0].argument == {"thesis": "x", "arguments": []}
+    assert b2.cover_image == "images/c.png"
+    assert b2.premise == "pre" and b2.prologue == "pro" and b2.epilogue == "epi"
+    assert b2.chapters[0].intermezzo == "interludio"
     # persistenza su disco
     p = Project(tmp_path, b); p.save()
     assert Project.is_project(tmp_path)
     p2 = Project.load(tmp_path)
     assert p2.book.style.mode == "autopilota"
+    assert p2.book.premise == "pre" and p2.book.chapters[0].intermezzo == "interludio"

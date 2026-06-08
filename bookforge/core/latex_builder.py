@@ -50,6 +50,7 @@ PREAMBLE = r"""\documentclass[%(font_size)s,%(paper)s]{%(doc_class)s}
 
 COVER = r"""\begin{titlepage}
     \centering
+    %(cover_image_block)s
     \vspace*{3cm}
     {\Huge\bfseries %(title)s\par}
     \vspace{1cm}
@@ -73,6 +74,27 @@ def _babel(lang: str) -> str:
     if "spagn" in lang or "span" in lang:
         return "spanish"
     return "italian"
+
+
+def _starred_section(title: str, body: str) -> list[str]:
+    """Blocco di una sezione non numerata (premessa, prologo, epilogo…) con voce nell'indice."""
+    return [
+        r"\chapter*{%s}" % escape_latex(title),
+        r"\addcontentsline{toc}{chapter}{%s}" % escape_latex(title),
+        body.strip(),
+        "",
+    ]
+
+
+def _cover_image_block(book: Book) -> str:
+    """Snippet \\includegraphics per l'immagine di copertina, se impostata."""
+    path = (book.cover_image or "").strip().replace("\\", "/")
+    if not path:
+        return ""
+    # \IfFileExists così un percorso errato non fa fallire la compilazione
+    inc = (r"\includegraphics[width=\textwidth,height=0.45\textheight,"
+           r"keepaspectratio]{%s}\par\vspace{1cm}" % path)
+    return r"\IfFileExists{%s}{%s}{}" % (path, inc)
 
 
 def build_latex(book: Book) -> str:
@@ -99,18 +121,24 @@ def build_latex(book: Book) -> str:
         "subtitle_block": subtitle_block,
         "author": escape_latex(book.author),
         "year": escape_latex(book.year),
+        "cover_image_block": _cover_image_block(book),
     })
 
     parts.append(r"\frontmatter" if style.document_class == "book" else "")
+
+    # --- PREMESSA ---
+    if book.premise.strip():
+        parts += _starred_section("Premessa", book.premise)
 
     # --- PREFAZIONE ---
     preface = book.preface.strip() or (
         escape_latex(book.abstract) if book.abstract else "")
     if preface:
-        parts.append(r"\chapter*{Prefazione}")
-        parts.append(r"\addcontentsline{toc}{chapter}{Prefazione}")
-        parts.append(preface)
-        parts.append("")
+        parts += _starred_section("Prefazione", preface)
+
+    # --- PROLOGO ---
+    if book.prologue.strip():
+        parts += _starred_section("Prologo", book.prologue)
 
     # --- INDICE ---
     parts.append(r"\tableofcontents")
@@ -118,7 +146,7 @@ def build_latex(book: Book) -> str:
 
     parts.append(r"\mainmatter" if style.document_class == "book" else "")
 
-    # --- CAPITOLI ---
+    # --- CAPITOLI (con eventuale intermezzo dopo ciascuno) ---
     for ch in book.chapters:
         parts.append(r"\chapter{%s}" % escape_latex(ch.title))
         body = ch.latex.strip() or ch.text.strip()
@@ -126,9 +154,21 @@ def build_latex(book: Book) -> str:
             body = r"%% (capitolo ancora vuoto)"
         parts.append(body)
         parts.append("")
+        if ch.intermezzo.strip():
+            parts.append(r"\bigskip")
+            parts.append(r"\begin{center}\itshape")
+            parts.append(ch.intermezzo.strip())
+            parts.append(r"\end{center}")
+            parts.append(r"\bigskip")
+            parts.append("")
 
-    # --- FINE / QUARTA DI COPERTINA ---
+    # --- FINE LIBRO / QUARTA DI COPERTINA ---
     parts.append(r"\backmatter" if style.document_class == "book" else "")
+
+    # --- EPILOGO (fine libro) ---
+    if book.epilogue.strip():
+        parts += _starred_section("Epilogo", book.epilogue)
+
     if book.back_cover.strip():
         parts.append(r"\clearpage")
         parts.append(r"\thispagestyle{empty}")

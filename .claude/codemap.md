@@ -14,7 +14,7 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
 |------|---------|----------------|
 | `model.py` | Modello dati + persistenza | `Book`, `Chapter`, `BookStyle`, `Project`; `Project.save/load/is_project`; `Book.add_chapter/move_chapter/neighbors/to_dict/from_dict` |
 | `latex_builder.py` | Genera il documento LaTeX completo | `build_latex(book)`, `escape_latex(s)`, `PREAMBLE`, `COVER` |
-| `compiler.py` | Compila/apre PDF e TeXstudio | `compile_pdf`, `compile_tex`, `open_pdf`, `open_pdf_path`, `open_in_texstudio`, `find_main_tex`, `write_tex` |
+| `compiler.py` | Compila/apre PDF e TeXstudio | `compile_pdf`, `compile_tex`, `open_pdf`, `open_pdf_path`, `open_in_texstudio`, `find_main_tex`, `write_tex`, `find_latex_tool` (cerca latexmk/pdflatex nel PATH e nelle posizioni MiKTeX/TeX Live) |
 | `diagram.py` | Snippet figure + render diagrammi | `tikz_figure`, `image_figure`, `render_mermaid`, `render_graphviz`, `strip_fences` |
 | `docx_formatter.py` | Sistema file .docx (Word) | `format_docx(src,dst,rules)`, `DocxFormatRules`, `FormatReport` |
 | `image_gen.py` | Generazione immagini raster | `generate_image`, `image_available`, `ImageGenConfig` |
@@ -35,7 +35,9 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
   - `DatapizzaEngine` (reale via `datapizza-ai`) e `MockEngine` (offline). **Stessa interfaccia**:
     `write, coherence, format_latex, summarize, proofread, edit_text, outline, transitions,
     bridge, generate_diagram, caption, image_prompt, review_notes, socratic_questions,
-    claim_notes, argument_map`.
+    claim_notes, argument_map, book_section` (premessa/prologo/epilogo/quarta).
+  - `GenerationCancelled`: eccezione di interruzione cooperativa (i worker la sollevano
+    dal callback di progresso quando l'utente preme «Interrompi»).
   - Pipeline a livello modulo: `process_chapter`, `autodraft_chapter`, `autodraft_book`.
   - Parser: `_parse_review`, `_parse_claims`, `_strip_code_fences`.
 - `commands.py`: `TEXT_COMMANDS` (lista `TextCommand`) + `command(key)`. Ogni comando è

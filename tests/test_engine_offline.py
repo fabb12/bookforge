@@ -1,7 +1,10 @@
 """Test del motore in modalità offline (MockEngine) e dell'autopilota."""
+import pytest
+
 from bookforge.agents.engine import (
     build_engine, EngineConfig, autodraft_book, autodraft_chapter,
     process_chapter, _parse_review, _parse_claims, _accepts_temperature,
+    GenerationCancelled,
 )
 from bookforge.core.model import Book
 
@@ -70,6 +73,27 @@ def test_autodraft_chapter_runs_pipeline():
     ch = b.add_chapter("C")
     autodraft_chapter(eng, b, ch)
     assert ch.text.strip() and ch.latex.strip() and ch.summary.strip()
+
+
+def test_book_section_offline():
+    eng = _engine()
+    b = Book(title="T", topic="argomento")
+    for kind in ("premessa", "prologo", "epilogo", "quarta"):
+        out = eng.book_section(b, kind)
+        assert isinstance(out, str) and out.strip()
+
+
+def test_progress_callback_can_cancel_pipeline():
+    # un callback di progresso che solleva GenerationCancelled interrompe la pipeline
+    eng = _engine()
+    b = Book(title="T")
+    ch = b.add_chapter("C"); ch.raw_concepts = "Un concetto."
+
+    def cancel(_msg):
+        raise GenerationCancelled()
+
+    with pytest.raises(GenerationCancelled):
+        process_chapter(eng, b, ch, progress=cancel)
 
 
 def test_parse_helpers():

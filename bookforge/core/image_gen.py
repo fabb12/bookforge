@@ -40,8 +40,9 @@ def image_available(config: ImageGenConfig) -> tuple[bool, str]:
     if config.provider != "google":
         return False, f"Provider immagini non supportato: {config.provider}"
     if not config.api_key:
-        return False, ("Nessuna API key per le immagini. Imposta GOOGLE_API_KEY "
-                       "(o BOOKFORGE_IMAGE_API_KEY).")
+        return False, ("Nessuna API key per le immagini. Imposta una chiave Google "
+                       "in ⚙ Impostazioni (provider «google») oppure la variabile "
+                       "d'ambiente GOOGLE_API_KEY / BOOKFORGE_IMAGE_API_KEY.")
     try:
         import google.genai  # noqa: F401
     except ImportError:

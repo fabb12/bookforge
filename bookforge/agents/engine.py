@@ -18,6 +18,16 @@ from typing import Callable
 
 from ..core.model import Book, Chapter
 
+
+class GenerationCancelled(Exception):
+    """Sollevata per interrompere in modo cooperativo la pipeline di generazione.
+
+    I worker della GUI passano un callback di `progress` che la solleva quando
+    l'utente preme «Interrompi»: la pipeline si ferma al successivo confine di passo
+    senza lasciare il modello in uno stato incoerente.
+    """
+
+
 # ---------------------------------------------------------------- client factory
 def _accepts_temperature(provider: str, model: str) -> bool:
     """Indica se il modello accetta il parametro `temperature`.
@@ -230,6 +240,27 @@ CLAIM_PROMPT = (
     "NON inventare fonti e non riscrivere il testo. Solo le righe richieste."
 )
 
+# --- sezioni speciali del libro (premessa, prologo, epilogo, quarta di copertina) ---
+SECTION_PROMPTS = {
+    "premessa": (
+        "Scrivi la PREMESSA di un saggio: una pagina in cui l'autore spiega l'origine "
+        "del libro, le motivazioni e il patto col lettore. Tono personale ma sobrio."),
+    "prologo": (
+        "Scrivi un PROLOGO che introduca il lettore nel mondo del libro con un'immagine, "
+        "una scena o una domanda forte, anticipando il tema senza esaurirlo."),
+    "epilogo": (
+        "Scrivi un EPILOGO che chiuda il libro: tira le fila del percorso, lascia al "
+        "lettore un pensiero conclusivo e un'apertura. Non riassumere capitolo per capitolo."),
+    "quarta": (
+        "Scrivi il testo della QUARTA DI COPERTINA: 2-4 frasi promozionali che incuriosiscano "
+        "il lettore e sintetizzino il valore del libro. Niente spoiler, niente titoli."),
+}
+
+SECTION_PROMPT_BASE = (
+    "Sei un autore professionista che scrive in {lingua}. {compito}\n"
+    "Restituisci SOLO il testo in prosa, senza intestazioni, virgolette o commenti."
+)
+
 ARGMAP_PROMPT = (
     "Sei un mentore che aiuta a strutturare un saggio. Dato titolo, argomento e concetti, "
     "proponi una mappa dell'argomentazione. Usa ESATTAMENTE questo formato, una voce per riga:\n"
@@ -370,6 +401,17 @@ class DatapizzaEngine:
                 f"Concetti:\n{ch.raw_concepts or ch.text or '(nessuno)'}")
         return a.run(task).text.strip()
 
+    # -- sezioni speciali (premessa/prologo/epilogo/quarta) ----------------
+    def book_section(self, book: Book, kind: str) -> str:
+        compito = SECTION_PROMPTS.get(kind, SECTION_PROMPTS["premessa"])
+        prompt = SECTION_PROMPT_BASE.format(lingua=book.style.language, compito=compito)
+        a = self._agent("sectioner", prompt)
+        task = (f"Libro: «{book.title}»"
+                + (f" — «{book.subtitle}»" if book.subtitle else "")
+                + f"\nArgomento: «{book.topic or book.title}».\n"
+                f"Abstract: {book.abstract or '(nessuno)'}.")
+        return _strip_code_fences(a.run(task).text.strip())
+
 
 # ---------------------------------------------------------------- offline fallback
 class MockEngine:
@@ -480,8 +522,31 @@ class MockEngine:
             lines.append("ARGOMENTO: (primo argomento)")
         return "\n".join(lines)
 
+    # -- sezioni speciali (offline: bozza deterministica) ------------------
+    def book_section(self, book: Book, kind: str) -> str:
+        nomi = {"premessa": "premessa", "prologo": "prologo",
+                "epilogo": "epilogo", "quarta": "quarta di copertina"}
+        nome = nomi.get(kind, kind)
+        tema = book.topic or book.title
+        if kind == "quarta":
+            return (f"«{book.title}» accompagna il lettore dentro {tema}, "
+                    f"tra domande aperte e prospettive nuove. Un percorso per "
+                    f"chi vuole capire più a fondo.")
+        return (f"[bozza offline — {nome}] In queste pagine, dedicate al libro "
+                f"«{book.title}», l'autore prepara il terreno al tema di {tema}. "
+                f"Sostituisci questo testo con la tua {nome}, oppure rigenerala con "
+                f"un motore AI reale.")
+
 
 # ---------------------------------------------------------------- orchestrazione
+# pacchetto pip del client per ciascun provider (per messaggi d'errore utili)
+_PROVIDER_PACKAGES = {
+    "anthropic": "datapizza-ai-clients-anthropic",
+    "openai": "datapizza-ai-clients-openai",
+    "google": "datapizza-ai-clients-google",
+}
+
+
 def build_engine(config: EngineConfig, force_offline: bool = False):
     """Restituisce (engine, is_real, message)."""
     if force_offline or not config.api_key:
@@ -489,7 +554,13 @@ def build_engine(config: EngineConfig, force_offline: bool = False):
     try:
         eng = DatapizzaEngine(config)
         return eng, True, f"Motore datapizza-ai attivo ({config.provider}/{config.model})."
-    except Exception as e:  # libreria mancante o errore di init
+    except ModuleNotFoundError as e:
+        # tipicamente manca il client del provider scelto (es. datapizza.clients.google)
+        pkg = _PROVIDER_PACKAGES.get((config.provider or "").lower())
+        hint = (f" Installa il client del provider:  pip install {pkg}" if pkg
+                else " Installa il client del provider.")
+        return MockEngine(), False, f"Fallback offline ({e}).{hint}"
+    except Exception as e:  # altra libreria mancante o errore di init
         return MockEngine(), False, f"Fallback offline ({e})."
 
 

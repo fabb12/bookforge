@@ -35,11 +35,15 @@ _COMMAND_ICONS = {
 
 class AiEditingController:
     def __init__(self, widget, get_engine: Callable, get_book: Callable | None = None,
-                 get_base_dir: Callable[[], Path | None] | None = None, parent=None):
+                 get_base_dir: Callable[[], Path | None] | None = None,
+                 get_image_config: Callable | None = None, parent=None):
         self.w = widget
         self.get_engine = get_engine
         self.get_book = get_book or (lambda: None)
         self.get_base_dir = get_base_dir or (lambda: None)
+        # config immagini: di default dall'ambiente, ma la GUI può iniettare
+        # quella costruita dalle Impostazioni (chiave salvata in-app).
+        self.get_image_config = get_image_config or (lambda: image_gen.ImageGenConfig.from_env())
         self.parent = parent or widget
         self._worker: AiWorker | None = None
         self._busy: QProgressDialog | None = None
@@ -208,7 +212,7 @@ class AiEditingController:
         eng = self._engine_or_warn()
         if eng is None:
             return
-        cfg = image_gen.ImageGenConfig.from_env()
+        cfg = self.get_image_config()
         ok, msg = image_gen.image_available(cfg)
         if not ok:
             QMessageBox.warning(self.parent, "Generazione immagini", msg)

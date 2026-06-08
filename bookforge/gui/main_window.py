@@ -117,6 +117,10 @@ class MainWindow(QMainWindow):
 
         add("Salva", self._save, "save")
         add("Genera capitolo", self._generate_current, "sparkles", primary=True)
+        # tasto per interrompere la generazione in corso (capitolo o autopilota)
+        self.stop_btn = add("Interrompi", self._stop_generation, "x", danger=True)
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.setToolTip("Interrompe la generazione AI in corso")
 
         # menu dei comandi AI a livello di capitolo
         chap_btn = tool_button("Capitolo (AI)", "wand")
@@ -149,6 +153,23 @@ class MainWindow(QMainWindow):
         amenu.addAction(icon("refresh"), "Rigenera TUTTI i capitoli", lambda: self._autogen_all(False))
         auto_btn.setMenu(amenu)
         tb.addWidget(auto_btn)
+
+        # menu sezioni speciali del libro (premessa, prologo, epilogo, quarta, copertina)
+        sec_btn = tool_button("Sezioni libro", "book")
+        smenu = QMenu(sec_btn)
+        smenu.addAction(icon("sparkles"), "Genera premessa (AI)",
+                        lambda: self._gen_section("premessa"))
+        smenu.addAction(icon("sparkles"), "Genera prologo (AI)",
+                        lambda: self._gen_section("prologo"))
+        smenu.addAction(icon("sparkles"), "Genera epilogo / fine libro (AI)",
+                        lambda: self._gen_section("epilogo"))
+        smenu.addAction(icon("sparkles"), "Genera quarta di copertina (AI)",
+                        lambda: self._gen_section("quarta"))
+        smenu.addSeparator()
+        smenu.addAction(icon("image"), "Genera immagine di copertina (AI)…",
+                        self._gen_cover_image)
+        sec_btn.setMenu(smenu)
+        tb.addWidget(sec_btn)
 
         tb.addSeparator()
         add("Esporta .tex", self._export_tex, "file")
@@ -223,15 +244,26 @@ class MainWindow(QMainWindow):
         from .ai_menu import AiEditingController
         self._ai_text = AiEditingController(
             self.text_edit, get_engine=lambda: self.engine,
-            get_book=lambda: self.book, parent=self)
+            get_book=lambda: self.book,
+            get_base_dir=lambda: self.project.folder,
+            get_image_config=self._image_config, parent=self)
         self._ai_latex = AiEditingController(
             self.latex_edit, get_engine=lambda: self.engine,
             get_book=lambda: self.book,
-            get_base_dir=lambda: self.project.folder, parent=self)
+            get_base_dir=lambda: self.project.folder,
+            get_image_config=self._image_config, parent=self)
 
         # riassunto
         self.summary_edit = QPlainTextEdit()
         self.tabs.addTab(self.summary_edit, "4 · Riassunto")
+
+        # intermezzo: testo interstiziale reso DOPO il capitolo
+        self.intermezzo_edit = QPlainTextEdit()
+        self.intermezzo_edit.setPlaceholderText(
+            "Intermezzo (opzionale): breve testo interstiziale reso DOPO questo "
+            "capitolo, in corsivo e centrato. Utile per stacchi, citazioni o respiri "
+            "tra un capitolo e il successivo.")
+        self.tabs.addTab(self.intermezzo_edit, "5 · Intermezzo")
 
         lay.addWidget(self.tabs)
 
@@ -254,16 +286,29 @@ class MainWindow(QMainWindow):
         self.m_title = QLineEdit(); self.m_subtitle = QLineEdit()
         self.m_author = QLineEdit(); self.m_year = QLineEdit()
         self.m_topic = QLineEdit()
-        self.m_abstract = QPlainTextEdit(); self.m_abstract.setMaximumHeight(90)
-        self.m_preface = QPlainTextEdit(); self.m_preface.setMaximumHeight(90)
+        self.m_abstract = QPlainTextEdit(); self.m_abstract.setMaximumHeight(80)
+        self.m_premise = QPlainTextEdit(); self.m_premise.setMaximumHeight(70)
+        self.m_preface = QPlainTextEdit(); self.m_preface.setMaximumHeight(70)
+        self.m_prologue = QPlainTextEdit(); self.m_prologue.setMaximumHeight(70)
+        self.m_epilogue = QPlainTextEdit(); self.m_epilogue.setMaximumHeight(70)
         self.m_back = QPlainTextEdit(); self.m_back.setMaximumHeight(70)
+        # copertina: percorso immagine + selettore file
+        self.m_cover = QLineEdit()
+        self.m_cover.setPlaceholderText("images/copertina.png (relativo al progetto)")
+        cover_browse = QPushButton("Sfoglia…"); cover_browse.clicked.connect(self._choose_cover_image)
+        cover_row = QHBoxLayout(); cover_row.addWidget(self.m_cover); cover_row.addWidget(cover_browse)
+        cover_wrap = QWidget(); cover_wrap.setLayout(cover_row)
         mform.addRow("Titolo", self.m_title)
         mform.addRow("Sottotitolo", self.m_subtitle)
         mform.addRow("Autore", self.m_author)
         mform.addRow("Anno", self.m_year)
         mform.addRow("Argomento", self.m_topic)
         mform.addRow("Abstract", self.m_abstract)
+        mform.addRow("Copertina (img)", cover_wrap)
+        mform.addRow("Premessa", self.m_premise)
         mform.addRow("Prefazione", self.m_preface)
+        mform.addRow("Prologo", self.m_prologue)
+        mform.addRow("Epilogo", self.m_epilogue)
         mform.addRow("Quarta cop.", self.m_back)
         tabs.addTab(meta, "Libro")
 
@@ -360,6 +405,7 @@ class MainWindow(QMainWindow):
             self.text_edit.setPlainText(ch.text)
             self.latex_edit.setPlainText(ch.latex)
             self.summary_edit.setPlainText(ch.summary)
+            self.intermezzo_edit.setPlainText(ch.intermezzo)
 
     def _commit_current_editors(self):
         ch = self._current_chapter()
@@ -370,6 +416,7 @@ class MainWindow(QMainWindow):
         ch.text = self.text_edit.toPlainText()
         ch.latex = self.latex_edit.toPlainText()
         ch.summary = self.summary_edit.toPlainText()
+        ch.intermezzo = self.intermezzo_edit.toPlainText()
 
     def _commit_title(self):
         ch = self._current_chapter()
@@ -411,7 +458,12 @@ class MainWindow(QMainWindow):
         self.m_title.setText(b.title); self.m_subtitle.setText(b.subtitle)
         self.m_author.setText(b.author); self.m_year.setText(b.year)
         self.m_topic.setText(b.topic); self.m_abstract.setPlainText(b.abstract)
-        self.m_preface.setPlainText(b.preface); self.m_back.setPlainText(b.back_cover)
+        self.m_cover.setText(b.cover_image)
+        self.m_premise.setPlainText(b.premise)
+        self.m_preface.setPlainText(b.preface)
+        self.m_prologue.setPlainText(b.prologue)
+        self.m_epilogue.setPlainText(b.epilogue)
+        self.m_back.setPlainText(b.back_cover)
         self.s_tone.setText(s.tone); self.s_audience.setText(s.audience)
         self.s_language.setText(s.language); self.s_person.setText(s.person)
         self.s_extra.setPlainText(s.extra_instructions)
@@ -426,6 +478,10 @@ class MainWindow(QMainWindow):
         b.subtitle = self.m_subtitle.text(); b.author = self.m_author.text().strip()
         b.year = self.m_year.text().strip(); b.topic = self.m_topic.text().strip()
         b.abstract = self.m_abstract.toPlainText(); b.preface = self.m_preface.toPlainText()
+        b.cover_image = self.m_cover.text().strip()
+        b.premise = self.m_premise.toPlainText()
+        b.prologue = self.m_prologue.toPlainText()
+        b.epilogue = self.m_epilogue.toPlainText()
         b.back_cover = self.m_back.toPlainText()
         s.tone = self.s_tone.text(); s.audience = self.s_audience.text()
         s.language = self.s_language.text(); s.person = self.s_person.text()
@@ -450,6 +506,98 @@ class MainWindow(QMainWindow):
             return
         self.s_prompt.setPlainText(content)
         self.statusBar().showMessage(f"Prompt di stile caricato da {path}", 4000)
+
+    # ============================================================ sezioni speciali / copertina
+    def _image_config(self):
+        """Config per la generazione immagini: chiave Google dalle Impostazioni
+        (o dalle variabili d'ambiente come fallback)."""
+        from ..core.image_gen import ImageGenConfig
+        cfg = ImageGenConfig.from_env()
+        key = self.app_settings.api_key_for("google") or cfg.api_key
+        if key:
+            cfg.api_key = key
+        return cfg
+
+    def _gen_section(self, kind: str):
+        """Genera con l'AI una sezione speciale (premessa/prologo/epilogo/quarta)."""
+        self._commit_book_meta()
+        targets = {"premessa": self.m_premise, "prologo": self.m_prologue,
+                   "epilogo": self.m_epilogue, "quarta": self.m_back}
+        labels = {"premessa": "Premessa", "prologo": "Prologo",
+                  "epilogo": "Epilogo / fine libro", "quarta": "Quarta di copertina"}
+        w = targets[kind]
+
+        def accept(text):
+            w.setPlainText(text)
+            self._commit_book_meta()
+
+        self._run_chapter_ai(labels[kind],
+                             lambda: self.engine.book_section(self.book, kind),
+                             accept, original=w.toPlainText())
+
+    def _choose_cover_image(self):
+        """Seleziona un'immagine di copertina; se è fuori dal progetto la copia in images/."""
+        import shutil
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Scegli immagine di copertina", str(self.project.folder),
+            "Immagini (*.png *.jpg *.jpeg *.pdf);;Tutti i file (*)")
+        if not path:
+            return
+        src = Path(path)
+        try:
+            rel = src.resolve().relative_to(self.project.folder.resolve())
+            self.m_cover.setText(str(rel).replace("\\", "/"))
+        except ValueError:
+            images = self.project.folder / "images"
+            images.mkdir(parents=True, exist_ok=True)
+            dst = images / src.name
+            try:
+                shutil.copyfile(src, dst)
+            except Exception as e:  # noqa: BLE001
+                QMessageBox.warning(self, "Copertina", f"Impossibile copiare l'immagine:\n{e}")
+                return
+            self.m_cover.setText(f"images/{src.name}")
+        self._commit_book_meta()
+
+    def _gen_cover_image(self):
+        """Genera con l'AI un'immagine di copertina e la salva in images/copertina.png."""
+        self._commit_book_meta()
+        from ..core import image_gen
+        cfg = self._image_config()
+        ok, msg = image_gen.image_available(cfg)
+        if not ok:
+            QMessageBox.warning(self, "Copertina", msg)
+            return
+        desc, ok = QInputDialog.getMultiLineText(
+            self, "Immagine di copertina", "Descrivi la copertina da generare:",
+            self.book.topic or self.book.title)
+        if not ok or not desc.strip():
+            return
+        out = self.project.folder / "images" / "copertina.png"
+        from .ai_worker import AiWorker
+        busy = QProgressDialog("Genero la copertina…", None, 0, 0, self)
+        busy.setWindowTitle("AI"); busy.setCancelButton(None)
+        busy.setMinimumDuration(0); busy.show()
+
+        def fn():
+            prompt = self.engine.image_prompt(desc, self.book)
+            image_gen.generate_image(prompt, out, cfg)
+            return str(out)
+
+        def done(_res):
+            busy.close()
+            self.m_cover.setText("images/copertina.png")
+            self._commit_book_meta()
+            QMessageBox.information(self, "Copertina", f"Immagine salvata in:\n{out}")
+
+        def fail(err):
+            busy.close()
+            QMessageBox.critical(self, "Copertina", err)
+
+        self._cover_worker = AiWorker(fn)
+        self._cover_worker.done.connect(done)
+        self._cover_worker.failed.connect(fail)
+        self._cover_worker.start()
 
     def _reload_engine_models(self, provider: str, selected: str = ""):
         """Popola il selettore dei modelli del pannello «Motore» per il provider."""
@@ -513,14 +661,32 @@ class MainWindow(QMainWindow):
             return
         self.progress.show()
         self.progress_label.setText("Avvio agenti…")
+        self.stop_btn.setEnabled(True)
         self.worker = GenerateWorker(self.engine, self.book, ch)
         self.worker.progress.connect(self.progress_label.setText)
         self.worker.finished_ok.connect(self._on_generated)
         self.worker.failed.connect(self._on_failed)
+        self.worker.cancelled.connect(self._on_cancelled)
         self.worker.start()
+
+    def _stop_generation(self):
+        """Richiede l'interruzione cooperativa della generazione in corso."""
+        if self.worker and self.worker.isRunning():
+            self.worker.requestInterruption()
+            self.progress_label.setText("Interruzione in corso…")
+            self.stop_btn.setEnabled(False)
+
+    def _on_cancelled(self):
+        self.progress.hide()
+        self.stop_btn.setEnabled(False)
+        self.progress_label.setText("Generazione interrotta.")
+        self._on_chapter_selected(self.chapter_list.currentRow())
+        self._refresh_chapter_list()
+        self._save(silent=True)
 
     def _on_generated(self, ch: Chapter):
         self.progress.hide()
+        self.stop_btn.setEnabled(False)
         self.progress_label.setText("Capitolo generato ✓")
         self._on_chapter_selected(self.chapter_list.currentRow())
         self._refresh_chapter_list()
@@ -529,6 +695,7 @@ class MainWindow(QMainWindow):
 
     def _on_failed(self, err: str):
         self.progress.hide()
+        self.stop_btn.setEnabled(False)
         self.progress_label.setText("")
         QMessageBox.critical(self, "Errore generazione", err)
 
@@ -666,14 +833,17 @@ class MainWindow(QMainWindow):
         from .autogen_worker import AutogenWorker
         self.progress.show()
         self.progress_label.setText("Autopilota in corso…")
+        self.stop_btn.setEnabled(True)
         self.worker = AutogenWorker(self.engine, self.book, chapter, only_empty)
         self.worker.progress.connect(self.progress_label.setText)
         self.worker.finished_ok.connect(self._on_autogen_done)
         self.worker.failed.connect(self._on_failed)
+        self.worker.cancelled.connect(self._on_cancelled)
         self.worker.start()
 
     def _on_autogen_done(self, n: int):
         self.progress.hide()
+        self.stop_btn.setEnabled(False)
         self.progress_label.setText(f"Autogenerati {n} capitolo/i ✓")
         self._on_chapter_selected(self.chapter_list.currentRow())
         self._refresh_chapter_list()

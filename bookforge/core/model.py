@@ -17,6 +17,7 @@ class Chapter:
     latex: str = ""              # corpo LaTeX (senza \chapter) prodotto dal FormatterAgent
     summary: str = ""            # riassunto breve per risparmiare token nei passaggi futuri
     argument: dict = field(default_factory=dict)  # mappa dell'argomentazione (structure.ArgumentMap)
+    intermezzo: str = ""         # testo interstiziale reso DOPO il capitolo (LaTeX/prosa)
     order: int = 0
 
     def to_dict(self) -> dict:
@@ -59,7 +60,11 @@ class Book:
     year: str = field(default_factory=lambda: str(datetime.now().year))
     abstract: str = ""              # usato per la prefazione / quarta di copertina
     topic: str = ""                 # argomento generale, dato di contesto agli agenti
+    cover_image: str = ""           # percorso (relativo al progetto) dell'immagine di copertina
+    premise: str = ""               # premessa (front matter, prima della prefazione)
     preface: str = ""               # testo della prefazione (LaTeX)
+    prologue: str = ""              # prologo (front matter, dopo la prefazione)
+    epilogue: str = ""              # epilogo / fine libro (back matter)
     back_cover: str = ""            # quarta di copertina (LaTeX)
     style: BookStyle = field(default_factory=BookStyle)
     chapters: list[Chapter] = field(default_factory=list)
@@ -113,7 +118,9 @@ class Book:
         return {
             "title": self.title, "subtitle": self.subtitle, "author": self.author,
             "year": self.year, "abstract": self.abstract, "topic": self.topic,
-            "preface": self.preface, "back_cover": self.back_cover,
+            "cover_image": self.cover_image, "premise": self.premise,
+            "preface": self.preface, "prologue": self.prologue,
+            "epilogue": self.epilogue, "back_cover": self.back_cover,
             "style": self.style.to_dict(),
             "chapters": [c.to_dict() for c in self.chapters],
         }
@@ -127,7 +134,11 @@ class Book:
             year=d.get("year", str(datetime.now().year)),
             abstract=d.get("abstract", ""),
             topic=d.get("topic", ""),
+            cover_image=d.get("cover_image", ""),
+            premise=d.get("premise", ""),
             preface=d.get("preface", ""),
+            prologue=d.get("prologue", ""),
+            epilogue=d.get("epilogue", ""),
             back_cover=d.get("back_cover", ""),
             style=BookStyle.from_dict(d.get("style", {})),
         )

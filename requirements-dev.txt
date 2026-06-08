@@ -1,3 +1,6 @@
-# Dipendenze per lo sviluppo e i test.
+# Dipendenze per lo sviluppo, i test e la creazione dell'eseguibile.
 -r requirements.txt
 pytest>=8.0
+
+# Creazione dell'eseguibile standalone (vedi bookforge.spec).
+pyinstaller>=6.0

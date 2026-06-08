@@ -21,6 +21,23 @@ Requisiti:
 - Python 3.10 – 3.12
 - Una distribuzione LaTeX (TeX Live o MiKTeX) — per la compilazione del PDF
 - TeXstudio (opzionale, per aprire/compilare manualmente)
+- `pandoc` (opzionale) — EPUB di qualità e conversione Word→LaTeX (https://pandoc.org)
+- Mermaid CLI (`mmdc`) e Graphviz (`dot`) (opzionali) — per i diagrammi
+
+> Nota: `pandoc`, LaTeX, `mmdc` e `dot` sono strumenti di **sistema** (non pip):
+> vanno installati a parte. L'app li rileva a runtime e ripiega su alternative
+> interne se assenti.
+
+## Creare l'eseguibile (PyInstaller)
+
+```bash
+pip install -r requirements-dev.txt
+pyinstaller bookforge.spec       # produce dist/BookForge[.exe]
+```
+
+Lo `bookforge.spec` dichiara gli import "pigri" (QtPdf, python-docx, client
+datapizza) e include il template di python-docx. Gli strumenti di sistema sopra
+restano dipendenze esterne, non vengono impacchettati.
 
 ## Avvio
 

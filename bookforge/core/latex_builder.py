@@ -97,7 +97,15 @@ def _cover_image_block(book: Book) -> str:
     return r"\IfFileExists{%s}{%s}{}" % (path, inc)
 
 
-def build_latex(book: Book) -> str:
+def build_latex(book: Book, bib_database: str | None = None) -> str:
+    """Assembla il .tex del libro.
+
+    `bib_database` è il nome (senza estensione) del file BibTeX del progetto
+    (tipicamente «references»): se passato, in fondo al libro vengono emessi
+    `\\bibliographystyle`/`\\bibliography` perché BibTeX possa generare la
+    bibliografia. Senza file .bib non si emette nulla, così la compilazione non
+    fallisce per un database mancante.
+    """
     style = book.style
     parts: list[str] = []
 
@@ -168,6 +176,12 @@ def build_latex(book: Book) -> str:
     # --- EPILOGO (fine libro) ---
     if book.epilogue.strip():
         parts += _starred_section("Epilogo", book.epilogue)
+
+    # --- BIBLIOGRAFIA (BibTeX) ---
+    if bib_database:
+        parts.append(r"\bibliographystyle{%s}" % (style.bib_style or "plain"))
+        parts.append(r"\bibliography{%s}" % bib_database)
+        parts.append("")
 
     if book.back_cover.strip():
         parts.append(r"\clearpage")

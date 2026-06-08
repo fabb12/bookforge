@@ -42,6 +42,7 @@ class BookStyle:
     document_class: str = "book"        # book | article | report
     font_size: str = "11pt"
     paper: str = "a4paper"
+    bib_style: str = "plain"            # stile BibTeX (plain | alpha | unsrt | ...)
 
     def to_dict(self) -> dict:
         return asdict(self)

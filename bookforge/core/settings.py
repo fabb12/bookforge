@@ -47,9 +47,35 @@ AVAILABLE_MODELS = {
 }
 
 
+# etichette leggibili dei modelli noti (id tecnico -> nome amichevole con una
+# nota sul compromesso qualità/velocità). Servono a rendere la scelta del modello
+# chiara nella UI: l'utente vede «Claude Opus 4.8 — massima qualità» invece del
+# solo identificativo. I modelli non in mappa mostrano il loro id così com'è.
+MODEL_LABELS = {
+    "claude-opus-4-8": "Claude Opus 4.8 — massima qualità",
+    "claude-sonnet-4-6": "Claude Sonnet 4.6 — equilibrato",
+    "claude-haiku-4-5-20251001": "Claude Haiku 4.5 — veloce ed economico",
+    "gpt-4o": "GPT-4o — qualità",
+    "gpt-4o-mini": "GPT-4o mini — veloce ed economico",
+    "gpt-4.1": "GPT-4.1 — qualità",
+    "gpt-4.1-mini": "GPT-4.1 mini — veloce",
+    "o3": "o3 — ragionamento avanzato",
+    "o4-mini": "o4-mini — ragionamento veloce",
+    "gemini-2.5-pro": "Gemini 2.5 Pro — qualità",
+    "gemini-2.5-flash": "Gemini 2.5 Flash — veloce",
+    "gemini-1.5-pro": "Gemini 1.5 Pro",
+    "gemini-1.5-flash": "Gemini 1.5 Flash — veloce",
+}
+
+
 def models_for(provider: str) -> list[str]:
     """Elenco dei modelli noti per un provider (vuoto se sconosciuto)."""
     return list(AVAILABLE_MODELS.get(provider, []))
+
+
+def model_label(model_id: str) -> str:
+    """Nome leggibile di un modello; ripiega sull'id tecnico se non in mappa."""
+    return MODEL_LABELS.get(model_id, model_id)
 
 
 # quanti progetti recenti tenere in memoria

@@ -2,7 +2,8 @@
 from pathlib import Path
 
 from bookforge.core.settings import (
-    AppSettings, AVAILABLE_MODELS, PROVIDERS, models_for, MAX_RECENT_PROJECTS,
+    AppSettings, AVAILABLE_MODELS, PROVIDERS, models_for, model_label,
+    MODEL_LABELS, DEFAULT_MODELS, MAX_RECENT_PROJECTS,
 )
 from bookforge.agents.engine import EngineConfig
 
@@ -57,6 +58,21 @@ def test_models_for_copre_i_provider():
         assert modelli and isinstance(modelli, list)
     # provider sconosciuto → lista vuota, non un errore
     assert models_for("inesistente") == []
+
+
+def test_model_label_leggibile_o_fallback():
+    # i modelli noti hanno un nome leggibile diverso dall'id tecnico
+    assert model_label("claude-opus-4-8") == MODEL_LABELS["claude-opus-4-8"]
+    assert model_label("claude-opus-4-8") != "claude-opus-4-8"
+    # un id sconosciuto ripiega su se stesso, senza errori
+    assert model_label("modello-misterioso") == "modello-misterioso"
+
+
+def test_default_models_hanno_etichetta():
+    # ogni modello consigliato dev'essere etichettato e in elenco per il provider
+    for provider, mid in DEFAULT_MODELS.items():
+        assert mid in MODEL_LABELS
+        assert mid in models_for(provider)
 
 
 def test_recent_projects_ordine_e_dedup(tmp_path: Path):

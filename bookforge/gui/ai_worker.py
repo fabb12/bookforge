@@ -5,6 +5,8 @@ from typing import Callable
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from ..agents.engine import friendly_engine_error
+
 
 class AiWorker(QThread):
     done = pyqtSignal(object)
@@ -20,4 +22,4 @@ class AiWorker(QThread):
         try:
             self.done.emit(self._fn(*self._args, **self._kwargs))
         except Exception as e:  # noqa: BLE001
-            self.failed.emit(str(e))
+            self.failed.emit(friendly_engine_error(e))

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from ..agents.engine import process_chapter, GenerationCancelled
+from ..agents.engine import process_chapter, GenerationCancelled, friendly_engine_error
 from ..core.model import Book, Chapter
 
 
@@ -34,4 +34,4 @@ class GenerateWorker(QThread):
         except GenerationCancelled:
             self.cancelled.emit()
         except Exception as e:  # noqa: BLE001
-            self.failed.emit(str(e))
+            self.failed.emit(friendly_engine_error(e))

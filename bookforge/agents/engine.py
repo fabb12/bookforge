@@ -47,6 +47,9 @@ def _accepts_temperature(provider: str, model: str) -> bool:
 def _make_client(provider: str, api_key: str, model: str,
                  temperature: float | None = None, max_tokens: int = 0):
     provider = provider.lower()
+    # ulteriore rete di sicurezza: la chiave deve arrivare pulita all'header HTTP
+    # (vedi EngineConfig.__post_init__) anche se _make_client viene chiamato altrove.
+    api_key = (api_key or "").strip()
     if provider == "openai":
         from datapizza.clients.openai import OpenAIClient as Cls
         model = model or "gpt-4o-mini"
@@ -79,6 +82,18 @@ class EngineConfig:
     api_key: str = ""
     temperature: float = 0.7
     max_tokens: int = 0
+
+    def __post_init__(self):
+        # Normalizza la chiave: spazi e «a capo» invisibili (tipici di un copia-incolla
+        # o di `export KEY=$(cat file)`) finirebbero nell'header `x-api-key` e farebbero
+        # rifiutare la chiave dal provider con un 401 «invalid x-api-key». Qui passano
+        # tutte le sorgenti (env, impostazioni, dialog), quindi la pulizia è centralizzata.
+        if self.api_key:
+            self.api_key = self.api_key.strip()
+        if self.provider:
+            self.provider = self.provider.strip().lower()
+        if self.model:
+            self.model = self.model.strip()
 
     @staticmethod
     def from_env() -> "EngineConfig":
@@ -618,6 +633,24 @@ def process_chapter(engine, book: Book, ch: Chapter,
 
     step("Completato.")
     return ch
+
+
+def friendly_engine_error(exc: Exception) -> str:
+    """Traduce un errore del provider LLM in un messaggio chiaro in italiano.
+
+    In particolare riconosce l'errore di autenticazione (HTTP 401 / `x-api-key`
+    non valida) e suggerisce all'utente come rimediare, invece di mostrare il
+    tracciato grezzo dell'API.
+    """
+    msg = str(exc)
+    low = msg.lower()
+    if ("401" in low or "authentication" in low or "invalid x-api-key" in low
+            or "invalid api key" in low or "unauthorized" in low):
+        return ("Chiave API non valida o assente: il provider ha rifiutato "
+                "l'autenticazione (401). Controlla la chiave in ⚙ Impostazioni "
+                "(occhio a spazi o «a capo» incollati per errore) e che corrisponda "
+                "al provider selezionato.")
+    return msg
 
 
 def _strip_code_fences(s: str) -> str:

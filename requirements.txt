@@ -1,7 +1,18 @@
+# ──────────────────────────────────────────────────────────────────────────
+# Dipendenze Python (pip) di BookForge
+#   pip install -r requirements.txt
+# ──────────────────────────────────────────────────────────────────────────
+
+# Interfaccia grafica (include i moduli QtPdf/QtPdfWidgets/QtSvg usati dall'app).
 PyQt6>=6.6
+
+# Lettura/scrittura di file Word (.docx) — formattazione e import.
 python-docx>=1.1
+
+# Motore di scrittura assistita (orchestrazione agenti).
 datapizza-ai>=0.0.2
-# Client provider del motore di testo (installa quello che usi):
+
+# Client del provider AI: installa quello che usi.
 # Consigliato: Anthropic (Claude Opus 4.8) per la scrittura assistita.
 datapizza-ai-clients-anthropic
 # datapizza-ai-clients-openai
@@ -10,7 +21,15 @@ datapizza-ai-clients-anthropic
 # Generazione di immagini (opzionale): Google Imagen / Gemini.
 # google-genai
 
-# Render diagrammi (opzionale, strumenti esterni a riga di comando):
-#   Mermaid:  npm install -g @mermaid-js/mermaid-cli   (comando: mmdc)
-#   Graphviz: pacchetto di sistema graphviz            (comando: dot)
-# TikZ non richiede strumenti esterni: compila direttamente in LaTeX.
+# ──────────────────────────────────────────────────────────────────────────
+# Strumenti di SISTEMA (NON installabili con pip — vanno installati a parte).
+# L'app li rileva con shutil.which() e ripiega su alternative se assenti.
+#
+#   pandoc    Export EPUB di qualità e conversione Word→LaTeX.  https://pandoc.org
+#             (Senza pandoc: EPUB con writer interno minimale; Word→LaTeX non
+#              disponibile.)
+#   LaTeX     Compilazione del PDF: TeX Live o MiKTeX (comandi: latexmk/pdflatex).
+#   Mermaid   Render diagrammi Mermaid: npm install -g @mermaid-js/mermaid-cli
+#             (comando: mmdc). TikZ non richiede strumenti esterni.
+#   Graphviz  Render diagrammi DOT (comando: dot) — pacchetto di sistema.
+# ──────────────────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ l'autore decide; tutto funziona anche **senza connessione né API key**.
 ```
             ┌──────────────────────────────────────────────┐
             │                   GUI (PyQt6)                  │  bookforge/gui/
-            │  StartupDialog · MainWindow · LatexBrowser     │
+            │  StartupDialog · MainWindow                    │
             │  dialog (mentore, metriche, versioni, …)       │
             │  worker QThread · anteprime · highlighter      │
             └───────────────┬───────────────┬───────────────┘

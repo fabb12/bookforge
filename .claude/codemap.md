@@ -6,9 +6,8 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
 ## Entry point
 - `main.py` — crea `QApplication`, applica il tema, mostra `StartupDialog`, poi apre la
   finestra giusta tramite `gui/launcher.window_for_startup`.
-- `gui/launcher.py` — `window_for_startup(startup)` costruisce `MainWindow` (progetto)
-  **oppure** `LatexBrowserWindow` (cartella LaTeX libera). Condiviso da `main.py` e da
-  «Chiudi progetto»; tiene in vita le finestre aperte.
+- `gui/launcher.py` — `window_for_startup(startup)` costruisce `MainWindow` (progetto).
+  Condiviso da `main.py` e da «Chiudi progetto»; tiene in vita le finestre aperte.
 
 ## `bookforge/core/` — logica pura (no PyQt, no rete)
 | File | Cosa fa | API principali |
@@ -43,11 +42,10 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
   un'istruzione NL passata a `engine.edit_text`.
 
 ## `bookforge/gui/` — interfaccia (PyQt6)
-- `startup.py` — `StartupDialog`: progetti recenti (cliccabili), crea/apri progetto, apri
-  cartella LaTeX, strumenti Word.
+- `startup.py` — `StartupDialog`: progetti recenti (cliccabili), crea/apri progetto,
+  strumenti (converti LaTeX → BookForge, Word).
 - `main_window.py` — `MainWindow`: lista capitoli, schede (Concetti/Testo/LaTeX/Riassunto),
   pannello Stile, toolbar. Hub che apre tutti i dialog e avvia i worker.
-- `latex_browser.py` — `LatexBrowserWindow`: editor di una cartella LaTeX qualsiasi.
 - Dialog: `mentor_dialog`, `metrics_dialog`, `argument_dialog`, `biblio_dialog`,
   `versions_dialog`, `docx_dialog`, `word_pdf_dialog` (Word→LaTeX→PDF), `settings_dialog` (API/LLM).
 - Menu della finestra: «🛠 Strumenti» (converti progetto LaTeX → BookForge, Word→LaTeX→PDF,

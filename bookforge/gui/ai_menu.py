@@ -17,7 +17,7 @@ from typing import Callable
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QMenu, QMessageBox, QInputDialog, QProgressDialog, QLineEdit,
+    QMenu, QMessageBox, QInputDialog, QProgressDialog,
 )
 
 from ..agents.commands import TEXT_COMMANDS, TextCommand
@@ -66,8 +66,14 @@ class AiEditingController:
             act.setEnabled(has_sel or not cmd.needs_selection)
             act.triggered.connect(lambda _checked=False, c=cmd: self.run_command(c))
         ai.addSeparator()
-        ai.addAction(icon("chart"), "Genera diagramma…", self.generate_diagram)
-        ai.addAction(icon("image"), "Genera immagine…", self.generate_image)
+        # Diagrammi e immagini operano sul testo selezionato (è quello la
+        # descrizione): senza selezione le azioni restano disabilitate.
+        diag = ai.addAction(icon("chart"), "Genera diagramma dalla selezione",
+                            self.generate_diagram)
+        diag.setEnabled(has_sel)
+        img = ai.addAction(icon("image"), "Genera immagine dalla selezione",
+                           self.generate_image)
+        img.setEnabled(has_sel)
         menu.exec(self.w.mapToGlobal(pos))
 
     # ------------------------------------------------------------------ infra
@@ -154,10 +160,10 @@ class AiEditingController:
         eng = self._engine_or_warn()
         if eng is None:
             return
-        desc, ok = QInputDialog.getMultiLineText(
-            self.parent, "Genera diagramma",
-            "Descrivi lo schema da generare:", "")
-        if not ok or not desc.strip():
+        desc = self._selected_text().strip()
+        if not desc:
+            QMessageBox.information(self.parent, "Genera diagramma",
+                                   "Seleziona prima il testo che descrive il diagramma.")
             return
         kind, ok = QInputDialog.getItem(
             self.parent, "Tipo di diagramma",
@@ -190,15 +196,25 @@ class AiEditingController:
 
         self._start("Genero il diagramma…", fn, on_done)
 
+    def _unique_path(self, folder: Path, stem: str, ext: str = ".png") -> Path:
+        """Percorso `folder/stem.ext` reso univoco aggiungendo un suffisso
+        numerico se il file esiste già (così non si sovrascrivono immagini)."""
+        folder.mkdir(parents=True, exist_ok=True)
+        out = folder / f"{stem}{ext}"
+        i = 2
+        while out.exists():
+            out = folder / f"{stem}_{i}{ext}"
+            i += 1
+        return out
+
     def _mermaid_snippet(self, code: str, caption: str, desc: str):
         base = self.get_base_dir()
         if base is None:
             QMessageBox.warning(self.parent, "Diagramma",
                                 "Salva prima il file: serve una cartella per l'immagine.")
             return None
-        images = Path(base) / "images"
         name = re.sub(r"[^a-z0-9]+", "_", desc.lower()).strip("_")[:30] or "diagramma"
-        out = images / f"{name}.png"
+        out = self._unique_path(Path(base) / "images", name)
         try:
             diagram.render_mermaid(code, out)
         except Exception as e:  # noqa: BLE001
@@ -212,6 +228,11 @@ class AiEditingController:
         eng = self._engine_or_warn()
         if eng is None:
             return
+        desc = self._selected_text().strip()
+        if not desc:
+            QMessageBox.information(self.parent, "Genera immagine",
+                                   "Seleziona prima il testo che descrive l'immagine.")
+            return
         cfg = self.get_image_config()
         ok, msg = image_gen.image_available(cfg)
         if not ok:
@@ -222,19 +243,10 @@ class AiEditingController:
             QMessageBox.warning(self.parent, "Immagine",
                                 "Salva prima il file: serve una cartella per l'immagine.")
             return
-        desc, ok = QInputDialog.getMultiLineText(
-            self.parent, "Genera immagine",
-            "Descrivi l'immagine da generare:", "")
-        if not ok or not desc.strip():
-            return
-        name, ok = QInputDialog.getText(
-            self.parent, "Nome file", "Nome del file (senza estensione):",
-            QLineEdit.EchoMode.Normal,
-            re.sub(r"[^a-z0-9]+", "_", desc.lower()).strip("_")[:30] or "immagine")
-        if not ok or not name.strip():
-            return
+        # Nome file derivato dalla descrizione, reso univoco per non sovrascrivere.
+        name = re.sub(r"[^a-z0-9]+", "_", desc.lower()).strip("_")[:30] or "immagine"
+        out = self._unique_path(Path(base) / "images", name)
         book = self.get_book()
-        out = Path(base) / "images" / f"{name.strip()}.png"
 
         def fn():
             prompt = eng.image_prompt(desc, book)

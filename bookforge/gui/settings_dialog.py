@@ -10,7 +10,8 @@ from PyQt6.QtWidgets import (
     QLineEdit, QLabel, QComboBox, QDoubleSpinBox, QSpinBox, QMessageBox,
 )
 
-from ..core.settings import AppSettings, PROVIDERS, DEFAULT_MODELS, models_for
+from ..core.settings import AppSettings, PROVIDERS, DEFAULT_MODELS
+from .model_selector import ModelSelector
 
 
 class SettingsDialog(QDialog):
@@ -44,9 +45,9 @@ class SettingsDialog(QDialog):
         form = QFormLayout(box)
         self.provider = QComboBox(); self.provider.addItems(list(PROVIDERS))
         self.provider.currentTextChanged.connect(self._on_provider_changed)
-        # modello: tendina con i modelli disponibili del provider, ma editabile
-        # così resta possibile digitare un identificativo non in elenco
-        self.model = QComboBox(); self.model.setEditable(True)
+        # modello: selettore chiaro con nomi leggibili e voce «Altro» per gli id
+        # non in elenco (vedi ModelSelector). Si aggiorna al cambio di provider.
+        self.model = ModelSelector()
         self.key = QLineEdit(); self.key.setEchoMode(QLineEdit.EchoMode.Password)
         self.key.setPlaceholderText("Lascia vuoto per la modalità offline (test)")
         show = QPushButton("Mostra"); show.setCheckable(True)
@@ -96,22 +97,18 @@ class SettingsDialog(QDialog):
         self.provider.blockSignals(True)
         self.provider.setCurrentText(provider)
         self.provider.blockSignals(False)
-        # popola la tendina con i modelli disponibili del provider scelto
-        self.model.blockSignals(True)
-        self.model.clear()
-        self.model.addItems(models_for(provider))
-        self.model.blockSignals(False)
         # modello: quello salvato se è il provider attivo, altrimenti il default
         if provider == self.settings.provider and self.settings.model:
-            self.model.setCurrentText(self.settings.model)
+            target = self.settings.model
         else:
-            self.model.setCurrentText(DEFAULT_MODELS.get(provider, ""))
+            target = DEFAULT_MODELS.get(provider, "")
+        self.model.set_provider(provider, target)
         self.key.setText(self._keys.get(provider, ""))
 
     def _save(self):
         self._stash_current_key()
         self.settings.provider = self.provider.currentText()
-        self.settings.model = self.model.currentText().strip() or DEFAULT_MODELS.get(
+        self.settings.model = self.model.current_model() or DEFAULT_MODELS.get(
             self.settings.provider, "")
         self.settings.api_keys = {p: k for p, k in self._keys.items() if k}
         self.settings.temperature = self.temperature.value()

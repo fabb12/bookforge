@@ -13,9 +13,10 @@ from PyQt6.QtWidgets import (
 
 from ..core.model import Project, Chapter
 from ..core import compiler
-from ..core.settings import AppSettings, models_for
+from ..core.settings import AppSettings
 from ..agents.engine import EngineConfig, build_engine
 from .worker import GenerateWorker
+from .model_selector import ModelSelector
 
 
 class MainWindow(QMainWindow):
@@ -301,8 +302,8 @@ class MainWindow(QMainWindow):
         eng = QWidget(); eform = QFormLayout(eng)
         self.e_provider = QComboBox(); self.e_provider.addItems(["openai", "anthropic", "google"])
         self.e_provider.setCurrentText(self.engine_config.provider)
-        # modello: tendina con i modelli disponibili del provider, ma editabile
-        self.e_model = QComboBox(); self.e_model.setEditable(True)
+        # modello: selettore chiaro con nomi leggibili e voce «Altro» (ModelSelector)
+        self.e_model = ModelSelector()
         self.e_provider.currentTextChanged.connect(self._on_engine_provider_changed)
         self._reload_engine_models(self.engine_config.provider, self.engine_config.model)
         self.e_key = QLineEdit(self.engine_config.api_key)
@@ -442,19 +443,15 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Prompt di stile caricato da {path}", 4000)
 
     def _reload_engine_models(self, provider: str, selected: str = ""):
-        """Popola la tendina dei modelli del pannello «Motore» per il provider scelto."""
-        self.e_model.blockSignals(True)
-        self.e_model.clear()
-        self.e_model.addItems(models_for(provider))
-        self.e_model.setCurrentText(selected or "")
-        self.e_model.blockSignals(False)
+        """Popola il selettore dei modelli del pannello «Motore» per il provider."""
+        self.e_model.set_provider(provider, selected)
 
     def _on_engine_provider_changed(self, provider: str):
         self._reload_engine_models(provider)
 
     def _apply_engine(self):
         provider = self.e_provider.currentText()
-        model = self.e_model.currentText().strip()
+        model = self.e_model.current_model()
         key = self.e_key.text().strip()
         # mantiene i parametri di campionamento dalle impostazioni globali
         self.engine_config = EngineConfig(
@@ -814,14 +811,19 @@ class MainWindow(QMainWindow):
         m.clear()
         m.addAction("📂 Apri progetto…", self._open_project)
 
+        # sottomenu dei recenti: sempre presente (così è scopribile), ma
+        # disabilitato quando non c'è altro progetto recente oltre a quello aperto
         recents = [p for p in self.app_settings.clean_recent_projects()
                    if str(p) != str(self.project.folder.resolve())]
+        sub = m.addMenu("🕘 Progetti recenti")
         if recents:
-            sub = m.addMenu("🕘 Progetti recenti")
             for path in recents:
                 name = Path(path).name
-                sub.addAction(f"📖 {name}",
-                              lambda _=False, fp=str(path): self._open_recent_project(fp))
+                act = sub.addAction(f"📖 {name}",
+                                    lambda _=False, fp=str(path): self._open_recent_project(fp))
+                act.setToolTip(str(path))
+        else:
+            sub.setEnabled(False)
         m.addSeparator()
         m.addAction("✖ Chiudi progetto", self._close_project)
 

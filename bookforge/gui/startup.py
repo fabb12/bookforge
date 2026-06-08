@@ -20,7 +20,6 @@ class StartupDialog(QDialog):
         self.setWindowTitle("BookForge — Avvio")
         self.setMinimumWidth(560)
         self.project: Project | None = None
-        self.latex_folder: Path | None = None   # cartella da aprire nel browser file
         self.settings = AppSettings.load()
 
         root = QVBoxLayout(self)
@@ -39,7 +38,6 @@ class StartupDialog(QDialog):
             root.addWidget(recent)
         root.addWidget(self._create_box())
         root.addWidget(self._open_box())
-        root.addWidget(self._browse_box())
         root.addWidget(self._tools_box())
 
     # ---------------- PROGETTI RECENTI ----------------
@@ -152,28 +150,6 @@ class StartupDialog(QDialog):
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(self, "Errore", f"Impossibile aprire il progetto:\n{e}")
             return
-        self.accept()
-
-    # ---------------- SFOGLIA CARTELLA LATEX ----------------
-    def _browse_box(self) -> QWidget:
-        box = QGroupBox("Apri una cartella di file LaTeX")
-        lay = QVBoxLayout(box)
-        info = QLabel(
-            "Apri una cartella qualsiasi che contiene un libro/saggio in LaTeX "
-            "(file .tex, immagini, capitoli…). Potrai sfogliare i file, scegliere "
-            "quale aprire e modificarlo direttamente. Non serve un progetto BookForge.")
-        info.setObjectName("Subtitle"); info.setWordWrap(True)
-        lay.addWidget(info)
-        btn = QPushButton("📂 Sfoglia cartella LaTeX…")
-        btn.clicked.connect(self._do_browse_latex)
-        lay.addWidget(btn)
-        return box
-
-    def _do_browse_latex(self):
-        d = QFileDialog.getExistingDirectory(self, "Apri cartella con file LaTeX")
-        if not d:
-            return
-        self.latex_folder = Path(d)
         self.accept()
 
     # ---------------- STRUMENTI (senza aprire un progetto) ----------------

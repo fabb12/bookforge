@@ -46,8 +46,7 @@ python main.py
 All'apertura puoi:
 - **Creare** un nuovo progetto (scegli una cartella vuota).
 - **Aprire** un progetto esistente (una cartella con `book.json`).
-- **Aprire una cartella LaTeX** qualsiasi (editor di file `.tex`, senza modello libro).
-- Accedere agli **strumenti Word**.
+- Accedere agli **strumenti** (converti un progetto LaTeX in BookForge, strumenti Word).
 
 Un progetto è una semplice cartella: dentro troverai `book.json`, e man mano
 `book.tex`, `references.bib`, `progress.json`, la cartella `.bookforge_versions/` e gli
@@ -159,13 +158,7 @@ Lo strumento **📝 Sistema Word** uniforma un `.docx`: normalizza i titoli, for
 didascalie e le sposta **sotto** le immagini, centra le immagini, ripulisce gli spazi e
 prepara l'aggiornamento dell'indice. Scegli il file di ingresso e quello di uscita.
 
-## 13. Editor di cartelle LaTeX
-
-Se apri una cartella LaTeX (anziché un progetto), hai un editor con browser dei file,
-evidenziazione della sintassi sui file `.tex`, scrittura assistita dall'AI, e i comandi
-per compilare/aprire il PDF.
-
-## 14. Risoluzione dei problemi
+## 13. Risoluzione dei problemi
 
 - **«Modalità offline»** — manca la API key: imposta `BOOKFORGE_API_KEY` e riavvia.
 - **La compilazione PDF fallisce** — verifica di avere `latexmk` e una distribuzione TeX

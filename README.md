@@ -49,7 +49,7 @@ Senza API key l'app parte in **modalità offline**: genera testo simulato, utile
 provare interfaccia e flusso di compilazione senza costi.
 
 ### Scrittura assistita dall'AI
-Negli editor (testo del capitolo, LaTeX, e browser dei file) il **tasto destro → 🤖 AI**
+Negli editor (testo del capitolo e LaTeX) il **tasto destro → 🤖 AI**
 offre comandi sulla selezione e strumenti di generazione:
 
 - **Comandi sul testo**: Riscrivi, Espandi, Accorcia, Continua, Più formale, Più
@@ -146,29 +146,25 @@ export, diagrammi, LaTeX, modello), il motore offline e la sistemazione `.docx`.
 All'avvio compare un dialog con:
 - **Crea un nuovo libro** — scegli titolo, autore, argomento e cartella del progetto.
 - **Modifica un libro esistente** — apri la cartella di un progetto (contiene `book.json`).
-- **Apri una cartella di file LaTeX** — apri una cartella *qualsiasi* che contiene un
-  libro/saggio in LaTeX (file `.tex`, immagini, capitoli inclusi con `\input`…). Si
-  apre un **browser dei file**: a sinistra l'albero della cartella, a destra l'editor.
-  Scegli quale file aprire, inserisci i tuoi punti/sezioni e salva. Da qui puoi anche
-  compilare il PDF, aprire in TeXstudio e usare «Sistema Word». **Non serve** un
-  progetto BookForge con `book.json`.
+- **Strumenti → Converti progetto LaTeX in progetto BookForge** — importa una cartella
+  LaTeX esistente e la trasforma in un progetto BookForge, **senza aprire alcun progetto**.
 - **Strumenti → Sistema documento Word** — formatta/impagina/corregge un `.docx`
   **senza aprire alcun progetto**.
 
 Un *progetto* è semplicemente una cartella con `book.json` (lo stato del libro) e
 `book.tex` (l'output generato).
 
-### Browser dei file LaTeX
-Anche dentro un progetto, il pulsante **📂 File progetto** apre lo stesso browser
-sulla cartella del progetto: utile per vedere ed editare a mano `book.tex`, i file
-inclusi, le immagini e gli ausiliari della compilazione.
+> Se hai un progetto LaTeX già pronto e vuoi solo editarlo a mano, usalo con il tuo
+> editor LaTeX (es. TeXstudio): BookForge lavora sul modello strutturato del libro,
+> non come editor di file `.tex` grezzi. Per portare un LaTeX dentro BookForge usa la
+> conversione qui sopra.
 
 ---
 
 ## Sistemazione di documenti Word (.docx)
 
-Il pulsante **📝 Sistema Word** (dalla finestra principale, dal browser file o
-direttamente dall'avvio) apre un dialog che lavora *direttamente* sul `.docx` con
+Il pulsante **📝 Sistema Word** (dalla finestra principale o direttamente
+dall'avvio) apre un dialog che lavora *direttamente* sul `.docx` con
 `python-docx` — modifiche chirurgiche e *lossless*. Oltre a titoli, corpo, margini e
 pulizia, sistema:
 
@@ -244,9 +240,8 @@ bookforge/
     engine.py                agenti datapizza-ai + comandi AI (edit/diagram/caption/mentore) + fallback
     commands.py              registro dei comandi di scrittura assistita (menu ↔ engine)
   gui/
-    startup.py               dialog Crea/Modifica/Apri cartella LaTeX/Strumenti Word
+    startup.py               dialog Crea/Modifica progetto + Strumenti (converti LaTeX, Word)
     main_window.py           editor capitoli, stile, motore, toolbar (AI + Capitolo + Mentore)
-    latex_browser.py         browser file + editor per cartelle LaTeX qualsiasi
     docx_dialog.py           dialog «Sistema Word»
     ai_menu.py               controller del menu 🤖 AI (comandi, diagrammi, immagini)
     ai_preview.py            anteprima Accetta/Rifiuta/Rigenera delle proposte AI

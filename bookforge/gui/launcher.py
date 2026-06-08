@@ -20,16 +20,8 @@ def _track(win):
 
 
 def window_for_startup(startup):
-    """Restituisce la finestra da mostrare (MainWindow o LatexBrowser) o None."""
+    """Restituisce la finestra da mostrare (MainWindow) o None."""
     from .main_window import MainWindow
     if startup.project is not None:
         return _track(MainWindow(startup.project))
-    if startup.latex_folder is not None:
-        from .latex_browser import LatexBrowserWindow
-        from ..agents.engine import EngineConfig, build_engine
-        from ..core.settings import AppSettings
-        engine, engine_real, _ = build_engine(
-            EngineConfig.from_settings(AppSettings.load()))
-        return _track(LatexBrowserWindow(
-            startup.latex_folder, engine=engine, engine_real=engine_real))
     return None

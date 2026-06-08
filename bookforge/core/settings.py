@@ -18,7 +18,7 @@ PROVIDERS = ("anthropic", "openai", "google")
 DEFAULT_MODELS = {
     "anthropic": "claude-opus-4-8",
     "openai": "gpt-4o-mini",
-    "google": "gemini-1.5-pro",
+    "google": "gemini-2.5-pro",
 }
 
 # modelli attualmente disponibili per provider, mostrati nel menu a tendina delle
@@ -41,8 +41,6 @@ AVAILABLE_MODELS = {
     "google": [
         "gemini-2.5-pro",
         "gemini-2.5-flash",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
     ],
 }
 
@@ -63,8 +61,15 @@ MODEL_LABELS = {
     "o4-mini": "o4-mini — ragionamento veloce",
     "gemini-2.5-pro": "Gemini 2.5 Pro — qualità",
     "gemini-2.5-flash": "Gemini 2.5 Flash — veloce",
-    "gemini-1.5-pro": "Gemini 1.5 Pro",
-    "gemini-1.5-flash": "Gemini 1.5 Flash — veloce",
+}
+
+
+# modelli ritirati dai provider: vengono rimappati automaticamente al caricamento
+# delle impostazioni, così le configurazioni salvate non restano bloccate su un id
+# non più servito (es. i Gemini 1.5, ritirati da Google).
+RETIRED_MODELS = {
+    "gemini-1.5-pro": "gemini-2.5-pro",
+    "gemini-1.5-flash": "gemini-2.5-flash",
 }
 
 
@@ -136,6 +141,9 @@ class AppSettings:
             data["api_keys"] = {}
         if not isinstance(data.get("recent_projects"), list):
             data["recent_projects"] = []
+        # rimappa eventuali modelli ritirati salvati in precedenza
+        if data.get("model") in RETIRED_MODELS:
+            data["model"] = RETIRED_MODELS[data["model"]]
         return AppSettings(**data)
 
     # ---------- persistenza ----------

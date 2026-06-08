@@ -1,9 +1,20 @@
 """Test del motore in modalità offline (MockEngine) e dell'autopilota."""
 from bookforge.agents.engine import (
     build_engine, EngineConfig, autodraft_book, autodraft_chapter,
-    process_chapter, _parse_review, _parse_claims,
+    process_chapter, _parse_review, _parse_claims, _accepts_temperature,
 )
 from bookforge.core.model import Book
+
+
+def test_temperature_omessa_per_claude_recenti():
+    # Opus 4.7+ rifiuta `temperature`: va omessa per evitare l'errore 400
+    assert _accepts_temperature("anthropic", "claude-opus-4-8") is False
+    assert _accepts_temperature("anthropic", "claude-opus-4-7") is False
+    # i modelli che la accettano ancora restano invariati
+    assert _accepts_temperature("anthropic", "claude-sonnet-4-6") is True
+    assert _accepts_temperature("anthropic", "claude-haiku-4-5-20251001") is True
+    assert _accepts_temperature("openai", "gpt-4o-mini") is True
+    assert _accepts_temperature("google", "gemini-2.5-pro") is True
 
 
 def _engine():

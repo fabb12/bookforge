@@ -52,6 +52,15 @@ def find_latex_tool(name: str) -> str | None:
     return None
 
 
+def _perl_available() -> bool:
+    """Indica se un interprete Perl è raggiungibile.
+
+    `latexmk` è uno script Perl: senza Perl non parte (tipico di MiKTeX su
+    Windows, che non lo include). In quel caso conviene usare `pdflatex`.
+    """
+    return shutil.which("perl") is not None or shutil.which("perl.exe") is not None
+
+
 def _env_with_tool(tool_path: str) -> dict:
     """Ambiente con la cartella dello strumento in testa al PATH.
 
@@ -140,17 +149,44 @@ def compile_pdf(project: Project) -> tuple[bool, str]:
     return compile_tex(tex_path)
 
 
+def _run_pdflatex(tex_path: Path, cwd: str) -> tuple[bool, str] | None:
+    """Compila con `pdflatex` (due passate). Restituisce (ok, log) o None se
+    `pdflatex` non è installato."""
+    pdflatex = find_latex_tool("pdflatex")
+    if not pdflatex:
+        return None
+    env = _env_with_tool(pdflatex)
+    r = None
+    for _ in range(2):  # due passate per indice e riferimenti
+        r = subprocess.run(
+            [pdflatex, "-interaction=nonstopmode", "-halt-on-error",
+             tex_path.name],
+            cwd=cwd, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=300, env=env)
+    pdf = tex_path.with_suffix(".pdf")
+    log = (r.stdout[-4000:] if r else "") + (r.stderr[-2000:] if r else "")
+    if pdf.exists():
+        return True, f"PDF generato: {pdf}\n\n--- log ---\n{log}"
+    return False, f"Compilazione fallita.\n\n--- log ---\n{log}"
+
+
 def compile_tex(tex_path: str | Path) -> tuple[bool, str]:
     """Compila un file .tex arbitrario con latexmk (se presente) o pdflatex.
 
     La compilazione avviene nella cartella del file, così funzionano i percorsi
     relativi (immagini, capitoli inclusi con \\input, bibliografie, ...).
+
+    `latexmk` è uno script Perl: se Perl non è installato (caso tipico di MiKTeX
+    su Windows) non viene usato e si ripiega direttamente su `pdflatex`. Anche se
+    `latexmk` parte ma fallisce senza produrre il PDF, si tenta `pdflatex` come
+    riserva prima di arrendersi.
     """
     tex_path = Path(tex_path)
     if not tex_path.exists():
         return False, f"File .tex non trovato: {tex_path}"
     cwd = str(tex_path.parent)
-    latexmk = find_latex_tool("latexmk")
+    # Usa latexmk solo se è presente *e* Perl è disponibile per eseguirlo.
+    latexmk = find_latex_tool("latexmk") if _perl_available() else None
     try:
         if latexmk:
             r = subprocess.run(
@@ -159,26 +195,22 @@ def compile_tex(tex_path: str | Path) -> tuple[bool, str]:
                 cwd=cwd, capture_output=True, text=True,
                 encoding="utf-8", errors="replace", timeout=300,
                 env=_env_with_tool(latexmk))
-        else:
-            pdflatex = find_latex_tool("pdflatex")
-            if not pdflatex:
-                return False, ("Né latexmk né pdflatex trovati. Installa una "
-                               "distribuzione LaTeX (TeX Live / MiKTeX) — se l'hai "
-                               "appena installata, riavvia BookForge perché il PATH "
-                               "venga aggiornato — oppure compila in TeXstudio.")
-            env = _env_with_tool(pdflatex)
-            r = None
-            for _ in range(2):  # due passate per indice e riferimenti
-                r = subprocess.run(
-                    [pdflatex, "-interaction=nonstopmode", "-halt-on-error",
-                     tex_path.name],
-                    cwd=cwd, capture_output=True, text=True,
-                    encoding="utf-8", errors="replace", timeout=300, env=env)
-        pdf = tex_path.with_suffix(".pdf")
-        log = (r.stdout[-4000:] if r else "") + (r.stderr[-2000:] if r else "")
-        if pdf.exists():
-            return True, f"PDF generato: {pdf}\n\n--- log ---\n{log}"
-        return False, f"Compilazione fallita.\n\n--- log ---\n{log}"
+            pdf = tex_path.with_suffix(".pdf")
+            log = (r.stdout[-4000:] if r else "") + (r.stderr[-2000:] if r else "")
+            if pdf.exists():
+                return True, f"PDF generato: {pdf}\n\n--- log ---\n{log}"
+            # latexmk ha fallito: ritenta con pdflatex prima di arrendersi.
+            fallback = _run_pdflatex(tex_path, cwd)
+            if fallback is not None:
+                return fallback
+            return False, f"Compilazione fallita.\n\n--- log ---\n{log}"
+        result = _run_pdflatex(tex_path, cwd)
+        if result is None:
+            return False, ("Né latexmk (eseguibile via Perl) né pdflatex trovati. "
+                           "Installa una distribuzione LaTeX (TeX Live / MiKTeX) — "
+                           "se l'hai appena installata, riavvia BookForge perché il "
+                           "PATH venga aggiornato — oppure compila in TeXstudio.")
+        return result
     except subprocess.TimeoutExpired:
         return False, "Timeout durante la compilazione."
     except Exception as e:

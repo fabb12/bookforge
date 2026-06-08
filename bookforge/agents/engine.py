@@ -19,6 +19,21 @@ from typing import Callable
 from ..core.model import Book, Chapter
 
 # ---------------------------------------------------------------- client factory
+def _accepts_temperature(provider: str, model: str) -> bool:
+    """Indica se il modello accetta il parametro `temperature`.
+
+    Anthropic ha rimosso i parametri di campionamento (temperature/top_p/top_k)
+    a partire da Claude Opus 4.7: passarli a questi modelli causa un errore
+    `invalid_request_error` («temperature is deprecated for this model»).
+    Per gli altri provider/modelli il parametro resta valido.
+    """
+    if provider == "anthropic":
+        m = re.search(r"opus-4-(\d+)", model or "")
+        if m and int(m.group(1)) >= 7:
+            return False
+    return True
+
+
 def _make_client(provider: str, api_key: str, model: str,
                  temperature: float | None = None, max_tokens: int = 0):
     provider = provider.lower()
@@ -30,13 +45,14 @@ def _make_client(provider: str, api_key: str, model: str,
         model = model or "claude-opus-4-8"
     elif provider == "google":
         from datapizza.clients.google import GoogleClient as Cls
-        model = model or "gemini-1.5-pro"
+        model = model or "gemini-2.5-pro"
     else:
         raise ValueError(f"Provider non supportato: {provider}")
     # i parametri di campionamento sono opzionali: alcuni client non li accettano,
-    # in quel caso si ripiega sulla costruzione minimale
+    # in quel caso si ripiega sulla costruzione minimale. La `temperature` viene
+    # omessa anche per i modelli che la rifiutano (es. Claude Opus 4.7+).
     extra: dict = {}
-    if temperature is not None:
+    if temperature is not None and _accepts_temperature(provider, model):
         extra["temperature"] = temperature
     if max_tokens:
         extra["max_tokens"] = max_tokens

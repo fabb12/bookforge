@@ -32,6 +32,12 @@ def test_load_assente_da_default(tmp_path: Path):
     assert s.provider == "anthropic"
 
 
+def test_modello_ritirato_viene_rimappato():
+    # i Gemini 1.5 sono ritirati: una config salvata su di essi va aggiornata
+    s = AppSettings.from_dict({"provider": "google", "model": "gemini-1.5-pro"})
+    assert s.model == "gemini-2.5-pro"
+
+
 def test_set_api_key_rimuove_se_vuota():
     s = AppSettings()
     s.set_api_key("anthropic", "k")

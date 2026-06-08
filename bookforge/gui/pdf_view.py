@@ -33,11 +33,13 @@ def _build_dialog():
     )
     from PyQt6.QtPdf import QPdfDocument
     from PyQt6.QtPdfWidgets import QPdfView
+    from .icons import icon, app_icon
 
     class _PdfPreviewDialog(QDialog):
         def __init__(self, parent, pdf_path):
             super().__init__(parent)
-            self.setWindowTitle(f"👁 Anteprima PDF — {Path(pdf_path).name}")
+            self.setWindowTitle(f"Anteprima PDF — {Path(pdf_path).name}")
+            self.setWindowIcon(app_icon())
             self.resize(820, 940)
             lay = QVBoxLayout(self)
 
@@ -51,8 +53,10 @@ def _build_dialog():
 
             row = QHBoxLayout()
             self.page_lbl = QLabel("")
-            zoom_out = QPushButton("➖"); zoom_out.clicked.connect(lambda: self._zoom(0.8))
-            zoom_in = QPushButton("➕"); zoom_in.clicked.connect(lambda: self._zoom(1.25))
+            zoom_out = QPushButton(icon("minus"), ""); zoom_out.setToolTip("Riduci")
+            zoom_out.clicked.connect(lambda: self._zoom(0.8))
+            zoom_in = QPushButton(icon("plus"), ""); zoom_in.setToolTip("Ingrandisci")
+            zoom_in.clicked.connect(lambda: self._zoom(1.25))
             fit = QPushButton("Adatta larghezza"); fit.clicked.connect(self._fit)
             close = QPushButton("Chiudi"); close.clicked.connect(self.accept)
             row.addWidget(self.page_lbl); row.addStretch(1)

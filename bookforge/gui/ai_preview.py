@@ -11,12 +11,15 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QPlainTextEdit,
 )
 
+from .icons import icon, app_icon
+
 
 class AiPreviewDialog(QDialog):
     def __init__(self, parent, title: str, original: str, proposed: str,
                  allow_regenerate: bool = True):
         super().__init__(parent)
         self.setWindowTitle(title)
+        self.setWindowIcon(app_icon())
         self.resize(720, 560)
         self.action = "reject"            # reject | accept | regenerate
         self.result_text = proposed
@@ -39,11 +42,11 @@ class AiPreviewDialog(QDialog):
 
         row = QHBoxLayout()
         if allow_regenerate:
-            b_regen = QPushButton("🔄 Rigenera"); b_regen.clicked.connect(self._regen)
+            b_regen = QPushButton(icon("refresh"), " Rigenera"); b_regen.clicked.connect(self._regen)
             row.addWidget(b_regen)
         row.addStretch(1)
-        b_reject = QPushButton("Rifiuta"); b_reject.clicked.connect(self.reject)
-        b_accept = QPushButton("Accetta"); b_accept.setObjectName("Primary")
+        b_reject = QPushButton(icon("x"), " Rifiuta"); b_reject.clicked.connect(self.reject)
+        b_accept = QPushButton(icon("check"), " Accetta"); b_accept.setObjectName("Primary")
         b_accept.clicked.connect(self._accept)
         row.addWidget(b_reject); row.addWidget(b_accept)
         lay.addLayout(row)

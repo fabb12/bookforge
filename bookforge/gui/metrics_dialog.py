@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..core import analysis, progress
+from .icons import icon, app_icon
 
 
 _COLS = [
@@ -31,7 +32,8 @@ class MetricsDialog(QDialog):
         super().__init__(parent)
         self.project = project
         self.book = project.book
-        self.setWindowTitle("📈 Dashboard di crescita")
+        self.setWindowTitle("Dashboard di crescita")
+        self.setWindowIcon(app_icon())
         self.resize(760, 520)
         self._build_ui()
         self._populate()
@@ -54,7 +56,7 @@ class MetricsDialog(QDialog):
         lay.addWidget(self.delta_lbl)
 
         row = QHBoxLayout()
-        save = QPushButton("📸 Salva istantanea"); save.setObjectName("Primary")
+        save = QPushButton(icon("camera"), " Salva istantanea"); save.setObjectName("Primary")
         save.clicked.connect(self._save_snapshot)
         close = QPushButton("Chiudi"); close.clicked.connect(self.accept)
         row.addStretch(1); row.addWidget(close); row.addWidget(save)

@@ -6,11 +6,13 @@ from PyQt6.QtWidgets import QApplication
 from bookforge.gui.theme import DARK_QSS
 from bookforge.gui.startup import StartupDialog
 from bookforge.gui.launcher import window_for_startup
+from bookforge.gui.icons import app_icon
 
 
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("BookForge")
+    app.setWindowIcon(app_icon())
     app.setStyleSheet(DARK_QSS)
 
     startup = StartupDialog()

@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 
 from ..core import analysis
 from .ai_worker import AiWorker
+from .icons import icon, app_icon
 
 
 class MentorDialog(QDialog):
@@ -26,7 +27,8 @@ class MentorDialog(QDialog):
         self.text = text or ""
         self._worker: AiWorker | None = None
 
-        self.setWindowTitle("🎓 Modalità Mentore")
+        self.setWindowTitle("Modalità Mentore")
+        self.setWindowIcon(app_icon())
         self.resize(720, 640)
         self._build_ui()
         self._render_offline()
@@ -47,7 +49,8 @@ class MentorDialog(QDialog):
         lay.addWidget(self.tabs, 1)
 
         row = QHBoxLayout()
-        self.ai_btn = QPushButton("🤖 Approfondisci con AI"); self.ai_btn.setObjectName("Primary")
+        self.ai_btn = QPushButton(icon("cpu"), " Approfondisci con AI")
+        self.ai_btn.setObjectName("Primary")
         self.ai_btn.clicked.connect(self._enrich_with_ai)
         close = QPushButton("Chiudi"); close.clicked.connect(self.accept)
         row.addStretch(1); row.addWidget(close); row.addWidget(self.ai_btn)

@@ -193,14 +193,37 @@ PROOFREAD_PROMPT = (
 
 FIX_LATEX_PROMPT = (
     "Sei un esperto di LaTeX. Ricevi il SORGENTE completo di un documento .tex e il "
-    "LOG con gli errori di compilazione. Individua la causa degli errori e correggi il "
-    "sorgente affinché compili senza errori. Modifica SOLO il minimo necessario per "
-    "risolvere i problemi segnalati: non riscrivere il contenuto, non rimuovere testo "
-    "dell'autore, non cambiare lo stile. Tipici interventi: escape di caratteri speciali "
-    "(&, %, $, #, _), parentesi/ambienti non bilanciati, comandi o pacchetti mancanti, "
-    "\\begin/\\end disallineati. Restituisci SOLO il sorgente .tex completo e corretto, "
-    "senza spiegazioni, commenti aggiuntivi o blocchi di codice markdown."
+    "LOG con gli errori di compilazione. Individua la causa di OGNI errore segnalato e "
+    "correggi il sorgente affinché compili senza errori. Modifica SOLO il minimo "
+    "necessario: non riscrivere il contenuto, non rimuovere testo dell'autore, non "
+    "cambiare lo stile. Tipici interventi: escape di caratteri speciali (&, %, $, #, _), "
+    "parentesi/ambienti non bilanciati, comandi non definiti (definiscili o sostituiscili), "
+    "pacchetti o colori mancanti (\\usepackage / \\definecolor), \\begin/\\end disallineati, "
+    "argomenti non chiusi (runaway argument). Correggi TUTTI gli errori del log, non solo "
+    "il primo.\n\n"
+    "Rispondi ESATTAMENTE in questo formato, senza blocchi di codice markdown:\n"
+    "MODIFICHE:\n"
+    "- <descrizione concisa di ogni modifica fatta, una per riga, in italiano>\n"
+    "SORGENTE:\n"
+    "<il sorgente .tex completo e corretto>"
 )
+
+
+def _parse_latex_fix(out: str) -> tuple[str, str]:
+    """Separa la spiegazione delle modifiche dal sorgente corretto.
+
+    Il motore risponde con un blocco `MODIFICHE:` seguito da `SORGENTE:`. Se i
+    marcatori mancano (modello poco collaborativo), si assume che l'intero output
+    sia il sorgente e la spiegazione resti vuota.
+    """
+    m = re.search(r"(?is)\bSORGENTE\s*:\s*\n?", out)
+    if not m:
+        return _strip_code_fences(out.strip()), ""
+    summary = out[:m.start()]
+    summary = re.sub(r"(?is)^\s*MODIFICHE\s*:\s*", "", summary).strip()
+    source = _strip_code_fences(out[m.end():].strip())
+    return source, summary
+
 
 # --- comandi di scrittura assistita (editing sulla selezione) ---
 EDITOR_PROMPT = (
@@ -367,13 +390,14 @@ class DatapizzaEngine:
         out = a.run(text).text.strip()
         return _strip_code_fences(out)
 
-    def fix_latex(self, source: str, errors: str) -> str:
-        """Corregge il sorgente .tex a partire dagli errori di compilazione."""
+    def fix_latex(self, source: str, errors: str) -> tuple[str, str]:
+        """Corregge il sorgente .tex dagli errori. Ritorna (sorgente, riepilogo)."""
         a = self._agent("latexfixer", FIX_LATEX_PROMPT)
         task = (f"ERRORI DI COMPILAZIONE:\n{errors}\n\n"
                 f"SORGENTE .tex DA CORREGGERE:\n{source}")
         out = a.run(task).text.strip()
-        return _strip_code_fences(out) or source
+        fixed, summary = _parse_latex_fix(out)
+        return (fixed or source), summary
 
     def summarize(self, text: str) -> str:
         a = self._agent("summary", SUMMARY_PROMPT)
@@ -609,24 +633,32 @@ class MockEngine:
         return "\n\n".join(escape_latex(p.strip())
                            for p in text.split("\n\n") if p.strip())
 
-    def fix_latex(self, source: str, errors: str) -> str:
+    def fix_latex(self, source: str, errors: str) -> tuple[str, str]:
         """Correzione offline: escape conservativo dei caratteri speciali nudi.
 
         Senza LLM non si può ragionare sul log, ma molti errori di compilazione
         nascono da caratteri speciali non scappati nel corpo del testo. Qui si
-        applica un escape prudente di `& # _ %` solo quando NON sono già
-        preceduti da un backslash, lasciando intatto tutto il resto.
+        applica un escape prudente di `& # _` solo quando NON sono già preceduti
+        da un backslash, lasciando intatto tutto il resto. Ritorna (sorgente,
+        riepilogo), come `DatapizzaEngine.fix_latex`.
         """
-        # `% ` resta un commento valido: si scappa solo se non a inizio costrutto;
-        # per prudenza si evita di toccare le righe che iniziano con `%`.
+        # le righe che iniziano con `%` sono commenti: si lasciano intatte.
         out_lines = []
+        changes = 0
         for line in source.splitlines():
             if line.lstrip().startswith("%"):
                 out_lines.append(line)
                 continue
-            fixed = re.sub(r"(?<!\\)([&#_])", r"\\\1", line)
+            fixed, n = re.subn(r"(?<!\\)([&#_])", r"\\\1", line)
+            changes += n
             out_lines.append(fixed)
-        return "\n".join(out_lines)
+        if changes:
+            summary = (f"- Eseguito l'escape di {changes} caratteri speciali "
+                       "(& # _) non protetti nel testo (modalità offline).")
+        else:
+            summary = ("- Nessuna correzione automatica disponibile offline: "
+                       "servirebbe un motore AI per interpretare il log.")
+        return "\n".join(out_lines), summary
 
     def summarize(self, text: str) -> str:
         first = text.strip().split("\n\n")[0]

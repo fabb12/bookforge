@@ -51,7 +51,10 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
 - Dialog: `mentor_dialog`, `metrics_dialog`, `argument_dialog`, `biblio_dialog`,
   `versions_dialog`, `docx_dialog`, `word_pdf_dialog` (Word→LaTeX→PDF), `settings_dialog` (API/LLM),
   `latex_log_dialog` (`LatexLogDialog`: finestra non modale col log di compilazione, errori
-  evidenziati, pulsante «Correggi con AI» → `engine.fix_latex` con anteprima).
+  evidenziati, pulsante «Correggi con AI»), `latex_fix_dialog` (`LatexFixDialog`: anteprima
+  della correzione con riepilogo + diff colorato). Flusso in `main_window._run_latex_fix`:
+  `engine.fix_latex(source, errors) -> (sorgente, riepilogo)` → anteprima → ricompila, in
+  ciclo automatico fino a `_MAX_FIX_ATTEMPTS` finché il PDF non è generato.
 - Menu della finestra: «🛠 Strumenti» (converti progetto LaTeX → BookForge, Word→LaTeX→PDF,
   formatta .docx) e «⚙ Impostazioni» (API e modelli LLM).
 - Supporto: `ai_menu` (menu 🤖 a tasto destro), `ai_preview` (Accetta/Rifiuta/Rigenera),

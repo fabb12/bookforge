@@ -1074,6 +1074,19 @@ class MainWindow(QMainWindow):
         accettata, il .tex corretto viene salvato e ricompilato (via `compile_tex`,
         così la correzione non viene sovrascritta dalla rigenerazione dal modello).
         """
+        self._run_latex_fix(attempt=1)
+
+    # numero massimo di giri automatici fix→ricompila (evita loop infiniti)
+    _MAX_FIX_ATTEMPTS = 4
+
+    def _run_latex_fix(self, attempt: int):
+        """Un giro del ciclo di riparazione: proponi → (accetta) → ricompila.
+
+        Se dopo la ricompilazione restano errori, riparte automaticamente con il
+        giro successivo (fino a `_MAX_FIX_ATTEMPTS`): l'autore approva ogni
+        singola modifica, ma non deve riavviare la procedura a mano. Ogni
+        proposta mostra il riepilogo e il diff delle modifiche.
+        """
         if self._last_compile is None:
             return
         tex_path = self.project.tex_path
@@ -1091,10 +1104,12 @@ class MainWindow(QMainWindow):
             return
 
         from .ai_worker import AiWorker
-        from .ai_preview import AiPreviewDialog
+        from .latex_fix_dialog import LatexFixDialog
         if getattr(self, "_fix_worker", None) and self._fix_worker.isRunning():
             return
-        busy = QProgressDialog("Analizzo gli errori e correggo il LaTeX…", None, 0, 0, self)
+        busy = QProgressDialog(
+            f"Analizzo gli errori e correggo il LaTeX… (tentativo {attempt})",
+            None, 0, 0, self)
         busy.setWindowTitle("AI"); busy.setCancelButton(None)
         busy.setMinimumDuration(0); busy.show()
 
@@ -1103,14 +1118,17 @@ class MainWindow(QMainWindow):
 
         def done(result):
             busy.close()
-            fixed = str(result).strip()
+            fixed, summary = result
+            fixed = str(fixed).strip()
             if not fixed or fixed == source.strip():
-                QMessageBox.information(self, "Correzione LaTeX",
-                                        "Il motore non ha proposto modifiche.")
+                QMessageBox.information(
+                    self, "Correzione LaTeX",
+                    "Il motore non ha proposto modifiche al sorgente. "
+                    "Apri il «Log LaTeX» per esaminare gli errori manualmente.")
                 return
-            dlg = AiPreviewDialog(self, "AI — Correzione errori LaTeX",
-                                  original=source, proposed=fixed,
-                                  allow_regenerate=True)
+            dlg = LatexFixDialog(self, original=source, proposed=fixed,
+                                 summary=summary, attempt=attempt,
+                                 allow_regenerate=True)
             dlg.exec()
             if dlg.action == "accept":
                 try:
@@ -1120,10 +1138,27 @@ class MainWindow(QMainWindow):
                                          f"Impossibile salvare il .tex:\n{e}")
                     return
                 # ricompila direttamente il .tex corretto (non rigenerare dal modello)
-                ok, log = compiler.compile_tex(tex_path)
-                self._present_compile_result(ok, log)
+                ok, new_log = compiler.compile_tex(tex_path)
+                self._present_compile_result(ok, new_log)
+                if ok:
+                    QMessageBox.information(
+                        self, "Correzione LaTeX",
+                        f"Risolto in {attempt} "
+                        f"{'tentativo' if attempt == 1 else 'tentativi'}: "
+                        "il PDF è stato generato.")
+                    return
+                # restano errori: continua il ciclo se non è esaurito e c'è ancora da fare
+                if (attempt < self._MAX_FIX_ATTEMPTS
+                        and compiler.extract_latex_errors(new_log)):
+                    self._run_latex_fix(attempt + 1)
+                else:
+                    QMessageBox.warning(
+                        self, "Correzione LaTeX",
+                        "Restano errori dopo "
+                        f"{attempt} tentativi. Controlla il «Log LaTeX»: "
+                        "alcuni problemi richiedono una correzione manuale.")
             elif dlg.action == "regenerate":
-                self._fix_latex_with_ai()
+                self._run_latex_fix(attempt)
 
         def fail(err):
             busy.close()

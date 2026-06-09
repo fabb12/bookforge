@@ -280,13 +280,29 @@ def test_extract_latex_errors_respects_max_chars():
 def test_mock_engine_fix_latex_escapes_special_chars():
     from bookforge.agents.engine import MockEngine
     eng = MockEngine()
-    fixed = eng.fix_latex("Costo del 50% di A & B con x_1 e #1.", errors="")
+    fixed, summary = eng.fix_latex("Costo del 50% di A & B con x_1 e #1.", errors="")
     # `&`, `_`, `#` vengono scappati; `%` resta (commento valido)
     assert r"A \& B" in fixed
     assert r"x\_1" in fixed
     assert r"\#1" in fixed
+    assert summary  # c'è sempre un riepilogo (anche se "nessuna modifica")
     # un carattere già scappato non viene raddoppiato
-    assert eng.fix_latex(r"gia\& scappato", errors="").count(r"\&") == 1
+    again, _ = eng.fix_latex(r"gia\& scappato", errors="")
+    assert again.count(r"\&") == 1
+
+
+def test_parse_latex_fix_separates_summary_and_source():
+    from bookforge.agents.engine import _parse_latex_fix
+    out = ("MODIFICHE:\n- Scappato il carattere %\n- Bilanciate le graffe\n"
+           "SORGENTE:\n\\documentclass{book}\n\\begin{document}\nciao\\end{document}")
+    source, summary = _parse_latex_fix(out)
+    assert source.startswith("\\documentclass")
+    assert "Scappato il carattere" in summary
+    assert "MODIFICHE" not in summary
+    # senza marcatore: tutto è sorgente, riepilogo vuoto
+    src2, sum2 = _parse_latex_fix("\\documentclass{book}")
+    assert src2 == "\\documentclass{book}"
+    assert sum2 == ""
 
 
 def test_needs_bibtex_detects_citations(tmp_path):

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Callable
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QMenu, QMessageBox, QInputDialog, QProgressDialog,
 )
@@ -52,8 +53,56 @@ class AiEditingController:
         self._worker: AiWorker | None = None
         self._busy: QProgressDialog | None = None
 
+        self._init_actions()
+
         self.w.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.w.customContextMenuRequested.connect(self._show_menu)
+        self.w.selectionChanged.connect(self._update_action_state)
+        # Inizializziamo lo stato corretto all'avvio
+        self._update_action_state()
+
+    def _init_actions(self):
+        self._actions = {}
+
+        shortcuts = {
+            "rewrite": "Ctrl+Shift+R",
+            "expand": "Ctrl+Shift+E",
+            "shorten": "Ctrl+Shift+S",
+            "continue": "Ctrl+Shift+C",
+            "formal": "Ctrl+Shift+F",
+            "plain": "Ctrl+Shift+P",
+            "fix": "Ctrl+Shift+X",
+        }
+
+        for cmd in TEXT_COMMANDS:
+            act = QAction(icon(_COMMAND_ICONS.get(cmd.key, "wand")), cmd.label, self.w)
+            if cmd.key in shortcuts:
+                act.setShortcut(QKeySequence(shortcuts[cmd.key]))
+                act.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            act.triggered.connect(lambda _checked=False, c=cmd: self.run_command(c))
+            self.w.addAction(act)
+            self._actions[cmd.key] = act
+
+        self._action_diagram = QAction(icon("chart"), "Genera diagramma dalla selezione", self.w)
+        self._action_diagram.setShortcut(QKeySequence("Ctrl+Shift+D"))
+        self._action_diagram.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self._action_diagram.triggered.connect(self.generate_diagram)
+        self.w.addAction(self._action_diagram)
+
+        self._action_image = QAction(icon("image"), "Genera immagine dalla selezione", self.w)
+        self._action_image.setShortcut(QKeySequence("Ctrl+Shift+I"))
+        self._action_image.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self._action_image.triggered.connect(self.generate_image)
+        self.w.addAction(self._action_image)
+
+    def _update_action_state(self):
+        has_sel = bool(self._selected_text().strip())
+        for cmd in TEXT_COMMANDS:
+            if cmd.key in self._actions:
+                self._actions[cmd.key].setEnabled(has_sel or not cmd.needs_selection)
+
+        self._action_diagram.setEnabled(has_sel)
+        self._action_image.setEnabled(has_sel)
 
     # ------------------------------------------------------------------ menu
     def _selected_text(self) -> str:
@@ -62,22 +111,29 @@ class AiEditingController:
 
     def _show_menu(self, pos):
         menu = self.w.createStandardContextMenu()
-        menu.addSeparator()
-        ai = menu.addMenu(icon("cpu"), "AI")
-        has_sel = bool(self._selected_text().strip())
+        first_action = menu.actions()[0] if menu.actions() else None
+
+        ai = QMenu("AI", menu)
+        ai.setIcon(icon("cpu"))
+
         for cmd in TEXT_COMMANDS:
-            act = ai.addAction(icon(_COMMAND_ICONS.get(cmd.key, "wand")), cmd.label)
-            act.setEnabled(has_sel or not cmd.needs_selection)
-            act.triggered.connect(lambda _checked=False, c=cmd: self.run_command(c))
+            act = self._actions[cmd.key]
+            ai.addAction(act)
+
         ai.addSeparator()
+
         # Diagrammi e immagini operano sul testo selezionato (è quello la
         # descrizione): senza selezione le azioni restano disabilitate.
-        diag = ai.addAction(icon("chart"), "Genera diagramma dalla selezione",
-                            self.generate_diagram)
-        diag.setEnabled(has_sel)
-        img = ai.addAction(icon("image"), "Genera immagine dalla selezione",
-                           self.generate_image)
-        img.setEnabled(has_sel)
+        ai.addAction(self._action_diagram)
+
+        ai.addAction(self._action_image)
+
+        if first_action:
+            menu.insertMenu(first_action, ai)
+            menu.insertSeparator(first_action)
+        else:
+            menu.addMenu(ai)
+
         menu.exec(self.w.mapToGlobal(pos))
 
     # ------------------------------------------------------------------ infra

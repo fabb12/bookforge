@@ -159,6 +159,42 @@ def test_latex_special_sections_and_cover():
     assert r"\includegraphics" in tex and "images/cop.png" in tex
 
 
+def test_latex_editorial_layout():
+    # layout editoriale: pacchetti, macro, frontespizio, copyright e quarta strutturata
+    b = Book(title="T", subtitle="SubA", author="Autore", year="2026")
+    b.style.layout = "editoriale"
+    b.subtitle_b = "SubB"; b.publisher = "Editore"; b.isbn = "978-0"
+    b.price = "18,00"; b.topic = "Saggistica"
+    b.back_quote = "Citazione"; b.back_quote_author = "Tizio"; b.back_blurb = "Descrizione."
+    b.cover_image = "cover.png"
+    b.add_chapter("Cap").latex = "Corpo."
+    tex = latex_builder.build_latex(b)
+    # preambolo editoriale
+    assert r"\usepackage{tikz}" in tex and r"\definecolor{modernblack}" in tex
+    assert r"\newcommand{\booktitle}{T}" in tex
+    assert r"\newcommand{\subtitleB}{SubB}" in tex
+    # frontespizio + copyright + quarta
+    assert r"\AddToShipoutPictureBG" in tex and "cover.png" in tex
+    assert r"Copyright" in tex and r"ISBN: \isbn" in tex
+    assert r"\fill[modernblack]" in tex
+    assert "Citazione" in tex and "TIZIO" in tex  # autore citazione in maiuscolo
+    assert "Descrizione." in tex
+    # il layout classico non deve emettere i pacchetti editoriali
+    b.style.layout = "classico"
+    classic = latex_builder.build_latex(b)
+    assert r"\usepackage{tikz}" not in classic
+    assert r"\begin{titlepage}" in classic
+
+
+def test_latex_editorial_back_blurb_falls_back_to_abstract():
+    # senza descrizione esplicita la quarta editoriale usa l'abstract
+    b = Book(title="T")
+    b.style.layout = "editoriale"
+    b.abstract = "Sintesi dal campo abstract."
+    b.add_chapter("Cap").latex = "Corpo."
+    assert "Sintesi dal campo abstract." in latex_builder.build_latex(b)
+
+
 def test_latex_bibliography_emitted_only_with_database():
     # senza database BibTeX non si emette nulla; con database sì
     b = Book(title="T")
@@ -202,6 +238,10 @@ def test_model_roundtrip_with_new_fields(tmp_path):
     b = Book(title="T", cover_image="images/c.png")
     b.style.mode = "autopilota"
     b.premise = "pre"; b.prologue = "pro"; b.epilogue = "epi"
+    # metadati editoriali
+    b.style.layout = "editoriale"
+    b.subtitle_b = "sub2"; b.publisher = "Ed"; b.isbn = "978"; b.price = "18,00"
+    b.back_quote = "cit"; b.back_quote_author = "Tizio"; b.back_blurb = "descr"
     c = b.add_chapter("Cap")
     c.argument = {"thesis": "x", "arguments": []}
     c.intermezzo = "interludio"
@@ -211,6 +251,10 @@ def test_model_roundtrip_with_new_fields(tmp_path):
     assert b2.cover_image == "images/c.png"
     assert b2.premise == "pre" and b2.prologue == "pro" and b2.epilogue == "epi"
     assert b2.chapters[0].intermezzo == "interludio"
+    assert b2.style.layout == "editoriale"
+    assert b2.subtitle_b == "sub2" and b2.publisher == "Ed" and b2.isbn == "978"
+    assert b2.price == "18,00" and b2.back_quote == "cit"
+    assert b2.back_quote_author == "Tizio" and b2.back_blurb == "descr"
     # persistenza su disco
     p = Project(tmp_path, b); p.save()
     assert Project.is_project(tmp_path)

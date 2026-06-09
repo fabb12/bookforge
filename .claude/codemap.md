@@ -13,7 +13,7 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
 | File | Cosa fa | API principali |
 |------|---------|----------------|
 | `model.py` | Modello dati + persistenza | `Book`, `Chapter`, `BookStyle`, `Project`; `Project.save/load/is_project`; `Book.add_chapter/move_chapter/neighbors/to_dict/from_dict` |
-| `latex_builder.py` | Genera il documento LaTeX completo | `build_latex(book)`, `escape_latex(s)`, `PREAMBLE`, `COVER` |
+| `latex_builder.py` | Genera il documento LaTeX completo | `build_latex(book)`, `escape_latex(s)`, `PREAMBLE`, `COVER`; layout editoriale (`style.layout == "editoriale"`): frontespizio TikZ, pagina copyright, quarta strutturata via `EDITORIAL_*` + `_editorial_*` (usa i campi `publisher`/`isbn`/`price`/`subtitle_b`/`back_quote*`/`back_blurb`) |
 | `compiler.py` | Compila/apre PDF e TeXstudio | `compile_pdf`, `compile_tex`, `open_pdf`, `open_pdf_path`, `open_in_texstudio`, `find_main_tex`, `write_tex`, `find_latex_tool` (cerca latexmk/pdflatex nel PATH e nelle posizioni MiKTeX/TeX Live) |
 | `diagram.py` | Snippet figure + render diagrammi | `tikz_figure`, `image_figure`, `render_mermaid`, `render_graphviz`, `strip_fences` |
 | `docx_formatter.py` | Sistema file .docx (Word) | `format_docx(src,dst,rules)`, `DocxFormatRules`, `FormatReport` |

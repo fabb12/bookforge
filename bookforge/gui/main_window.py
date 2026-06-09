@@ -292,6 +292,16 @@ class MainWindow(QMainWindow):
         self.m_prologue = QPlainTextEdit(); self.m_prologue.setMaximumHeight(70)
         self.m_epilogue = QPlainTextEdit(); self.m_epilogue.setMaximumHeight(70)
         self.m_back = QPlainTextEdit(); self.m_back.setMaximumHeight(70)
+        # metadati editoriali (usati dal layout "editoriale")
+        self.m_subtitle_b = QLineEdit()
+        self.m_subtitle_b.setPlaceholderText("Seconda riga di sottotitolo (frontespizio editoriale)")
+        self.m_publisher = QLineEdit()
+        self.m_isbn = QLineEdit()
+        self.m_price = QLineEdit(); self.m_price.setPlaceholderText("es. 18,00")
+        self.m_back_quote = QPlainTextEdit(); self.m_back_quote.setMaximumHeight(50)
+        self.m_back_quote_author = QLineEdit()
+        self.m_back_blurb = QPlainTextEdit(); self.m_back_blurb.setMaximumHeight(70)
+        self.m_back_blurb.setPlaceholderText("Descrizione di quarta (layout editoriale; vuoto = usa l'abstract)")
         # copertina: percorso immagine + selettore file
         self.m_cover = QLineEdit()
         self.m_cover.setPlaceholderText("images/copertina.png (relativo al progetto)")
@@ -309,7 +319,15 @@ class MainWindow(QMainWindow):
         mform.addRow("Prefazione", self.m_preface)
         mform.addRow("Prologo", self.m_prologue)
         mform.addRow("Epilogo", self.m_epilogue)
-        mform.addRow("Quarta cop.", self.m_back)
+        mform.addRow("Quarta cop. (classico)", self.m_back)
+        # --- sezione metadati editoriali ---
+        mform.addRow("Sottotitolo 2", self.m_subtitle_b)
+        mform.addRow("Editore", self.m_publisher)
+        mform.addRow("ISBN", self.m_isbn)
+        mform.addRow("Prezzo", self.m_price)
+        mform.addRow("Citazione quarta", self.m_back_quote)
+        mform.addRow("Autore citazione", self.m_back_quote_author)
+        mform.addRow("Descr. quarta (editoriale)", self.m_back_blurb)
         tabs.addTab(meta, "Libro")
 
         # --- stile ---
@@ -324,6 +342,10 @@ class MainWindow(QMainWindow):
         self.s_class = QComboBox(); self.s_class.addItems(["book", "report", "article"])
         self.s_font = QComboBox(); self.s_font.addItems(["10pt", "11pt", "12pt"])
         self.s_paper = QComboBox(); self.s_paper.addItems(["a4paper", "a5paper", "letterpaper"])
+        self.s_layout = QComboBox(); self.s_layout.addItems(["classico", "editoriale"])
+        self.s_layout.setToolTip(
+            "classico: copertina semplice · editoriale: frontespizio a tutta pagina, "
+            "pagina di copyright e quarta professionale (richiede tikz/eso-pic e un'immagine di copertina)")
         sform.addRow("Tono", self.s_tone)
         sform.addRow("Pubblico", self.s_audience)
         sform.addRow("Lingua", self.s_language)
@@ -333,6 +355,7 @@ class MainWindow(QMainWindow):
         sform.addRow("Classe doc.", self.s_class)
         sform.addRow("Corpo", self.s_font)
         sform.addRow("Formato", self.s_paper)
+        sform.addRow("Impaginazione", self.s_layout)
 
         self.s_prompt = QPlainTextEdit()
         self.s_prompt.setPlaceholderText(
@@ -464,6 +487,12 @@ class MainWindow(QMainWindow):
         self.m_prologue.setPlainText(b.prologue)
         self.m_epilogue.setPlainText(b.epilogue)
         self.m_back.setPlainText(b.back_cover)
+        self.m_subtitle_b.setText(b.subtitle_b)
+        self.m_publisher.setText(b.publisher); self.m_isbn.setText(b.isbn)
+        self.m_price.setText(b.price)
+        self.m_back_quote.setPlainText(b.back_quote)
+        self.m_back_quote_author.setText(b.back_quote_author)
+        self.m_back_blurb.setPlainText(b.back_blurb)
         self.s_tone.setText(s.tone); self.s_audience.setText(s.audience)
         self.s_language.setText(s.language); self.s_person.setText(s.person)
         self.s_extra.setPlainText(s.extra_instructions)
@@ -471,6 +500,7 @@ class MainWindow(QMainWindow):
         self.s_mode.setCurrentText(s.mode or "mentore")
         self.s_class.setCurrentText(s.document_class)
         self.s_font.setCurrentText(s.font_size); self.s_paper.setCurrentText(s.paper)
+        self.s_layout.setCurrentText(s.layout or "classico")
 
     def _commit_book_meta(self):
         b = self.book; s = b.style
@@ -483,6 +513,12 @@ class MainWindow(QMainWindow):
         b.prologue = self.m_prologue.toPlainText()
         b.epilogue = self.m_epilogue.toPlainText()
         b.back_cover = self.m_back.toPlainText()
+        b.subtitle_b = self.m_subtitle_b.text()
+        b.publisher = self.m_publisher.text().strip(); b.isbn = self.m_isbn.text().strip()
+        b.price = self.m_price.text().strip()
+        b.back_quote = self.m_back_quote.toPlainText()
+        b.back_quote_author = self.m_back_quote_author.text().strip()
+        b.back_blurb = self.m_back_blurb.toPlainText()
         s.tone = self.s_tone.text(); s.audience = self.s_audience.text()
         s.language = self.s_language.text(); s.person = self.s_person.text()
         s.extra_instructions = self.s_extra.toPlainText()
@@ -490,6 +526,7 @@ class MainWindow(QMainWindow):
         s.mode = self.s_mode.currentText()
         s.document_class = self.s_class.currentText()
         s.font_size = self.s_font.currentText(); s.paper = self.s_paper.currentText()
+        s.layout = self.s_layout.currentText()
         self.setWindowTitle(f"BookForge — {b.title}")
         self.statusBar().showMessage("Dati libro/stile applicati.", 3000)
 

@@ -214,8 +214,16 @@ def _generate_ideogram(prompt: str, config: ImageGenConfig, out_path: Path) -> N
     if not url:
         raise RuntimeError("Ideogram non ha restituito immagini "
                            "(prompt rifiutato o quota esaurita?)")
+    # Il CDN delle immagini Ideogram rifiuta con 403 le richieste senza uno
+    # User-Agent «da browser» (il default `Python-urllib/x.y` viene bloccato):
+    # scarichiamo quindi tramite una Request con header espliciti.
+    img_req = urllib.request.Request(url, headers={
+        "User-Agent": ("Mozilla/5.0 (compatible; BookForge/1.0; +https://"
+                       "github.com/fabb12/bookforge)"),
+        "Accept": "image/*,*/*",
+    })
     try:
-        with urllib.request.urlopen(url, timeout=120) as img_resp:
+        with urllib.request.urlopen(img_req, timeout=120) as img_resp:
             out_path.write_bytes(img_resp.read())
     except (urllib.error.HTTPError, urllib.error.URLError) as e:
         raise RuntimeError(f"Download dell'immagine Ideogram fallito: {e}") from e

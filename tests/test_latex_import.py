@@ -99,3 +99,45 @@ def test_convert_latex_to_project(tmp_path: Path):
     reopened = Project.load(project.folder)
     assert reopened.book.title == "Convertito"
     assert [c.title for c in reopened.book.chapters] == ["Uno"]
+
+
+def test_convert_copia_le_immagini(tmp_path: Path):
+    """La conversione copia le immagini citate, ai percorsi relativi del LaTeX."""
+    src = tmp_path / "src"
+    (src / "images").mkdir(parents=True)
+    (src / "images" / "archivista_cervello.png").write_bytes(b"PNGDATA")
+    (src / "main.tex").write_text(
+        "\\documentclass{book}\n\\title{Bugiardo}\n\\begin{document}\n"
+        "\\chapter{La memoria}\n"
+        "\\begin{figure}[htbp]\\centering\n"
+        "\\includegraphics[width=0.6\\textwidth]{images/archivista_cervello.png}\n"
+        "\\caption{L'archivista creativo.}\n\\end{figure}\n"
+        "\\end{document}\n", encoding="utf-8")
+    dest = tmp_path / "dest"
+    project = convert_latex_to_project(src, dest)
+    copia = project.folder / "images" / "archivista_cervello.png"
+    assert copia.is_file()
+    assert copia.read_bytes() == b"PNGDATA"
+
+
+def test_copia_immagine_senza_estensione_e_graphicspath(tmp_path: Path):
+    """Riferimento senza estensione e fuori cartella: risolto e copiato."""
+    src = tmp_path / "src"
+    (src / "figure").mkdir(parents=True)
+    (src / "figure" / "schema.pdf").write_bytes(b"PDF")
+    (src / "main.tex").write_text(
+        "\\documentclass{book}\n\\graphicspath{{figure/}}\n\\begin{document}\n"
+        "\\chapter{Uno}\n\\includegraphics{schema}\n\\end{document}\n",
+        encoding="utf-8")
+    dest = tmp_path / "dest"
+    project = convert_latex_to_project(src, dest)
+    # il riferimento è «schema» (senza cartella né estensione): finisce nella
+    # radice del progetto con l'estensione del file reale trovato.
+    assert (project.folder / "schema.pdf").is_file()
+
+
+def test_didascalie_sistemate_nel_preambolo():
+    """Il .tex generato carica il pacchetto caption per sistemare le didascalie."""
+    src = build_latex(_sample_book())
+    assert "\\usepackage{caption}" in src
+    assert "labelfont=bf" in src

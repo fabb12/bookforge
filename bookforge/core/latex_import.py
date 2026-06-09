@@ -9,12 +9,19 @@ già pronto da modificare. Il corpo LaTeX di ogni capitolo finisce in
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 
 from .model import Book, Project
 
 # parole che, in un capitolo *stellato*, indicano materiale di apertura (prefazione)
 _PREFACE_HINTS = ("prefaz", "preface", "premessa", "avvertenz")
+
+# estensioni di file che consideriamo «immagini» (per includegraphics e copia asset)
+_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".pdf", ".eps", ".gif",
+               ".bmp", ".tif", ".tiff", ".svg")
+# riferimenti a immagini nel sorgente LaTeX
+_GRAPHICS_RE = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}")
 
 
 # --------------------------------------------------------------------- utilità
@@ -228,19 +235,99 @@ def import_latex_project(folder: str | Path) -> Book:
     return book
 
 
+# --------------------------------------------------------------------- copia immagini
+def _referenced_images(book: Book) -> list[str]:
+    """Percorsi citati da `\\includegraphics` in tutto il libro, senza duplicati.
+
+    Mantiene l'ordine d'apparizione (utile per messaggi/diagnostica) e normalizza
+    i separatori di percorso a `/` come li scrive LaTeX.
+    """
+    fields = [book.preface, book.premise, book.prologue, book.epilogue,
+              book.back_cover, book.cover_image or ""]
+    fields += [ch.latex for ch in book.chapters]
+    seen: dict[str, None] = {}
+    for text in fields:
+        for m in _GRAPHICS_RE.finditer(text or ""):
+            ref = m.group(1).strip().replace("\\", "/")
+            if ref:
+                seen.setdefault(ref, None)
+    return list(seen)
+
+
+def _resolve_image(ref: str, src_root: Path) -> Path | None:
+    """Trova il file reale per un riferimento `\\includegraphics`.
+
+    Prova il percorso così com'è, poi (se manca l'estensione) le estensioni note;
+    come ultimo ripiego cerca per nome/base in tutto l'albero — così gestisce
+    anche i `\\graphicspath` (riferimenti senza cartella) che l'import non conserva.
+    """
+    direct = src_root / ref
+    if direct.is_file():
+        return direct
+    if direct.suffix == "":
+        for ext in _IMAGE_EXTS:
+            cand = direct.with_suffix(ext)
+            if cand.is_file():
+                return cand
+    name, stem = Path(ref).name, Path(ref).stem
+    for cand in src_root.rglob("*"):
+        if not cand.is_file():
+            continue
+        if cand.name == name:
+            return cand
+        if cand.stem == stem and cand.suffix.lower() in _IMAGE_EXTS:
+            return cand
+    return None
+
+
+def copy_referenced_images(book: Book, src_root: str | Path,
+                           dest_root: str | Path) -> int:
+    """Copia in `dest_root` le immagini citate dal libro, ai *percorsi relativi*
+    usati nel LaTeX, così che `\\includegraphics{images/...}` compili nel progetto.
+
+    Restituisce quante immagini sono state effettivamente copiate. Best-effort:
+    un'immagine non trovata o non copiabile viene saltata senza interrompere.
+    """
+    src_root, dest_root = Path(src_root), Path(dest_root)
+    copied = 0
+    for ref in _referenced_images(book):
+        found = _resolve_image(ref, src_root)
+        if not found:
+            continue
+        target = dest_root / ref
+        if target.suffix == "":            # riferimento senza estensione
+            target = target.with_suffix(found.suffix)
+        try:
+            if found.resolve() == target.resolve():
+                continue                   # già al posto giusto (src == dest)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(found, target)
+            copied += 1
+        except OSError:
+            continue
+    return copied
+
+
 def convert_latex_to_project(src_folder: str | Path, dest_folder: str | Path) -> Project:
     """Converte una cartella LaTeX in un progetto BookForge salvato in `dest_folder`.
 
     Se `dest_folder` non è vuota e non è già un progetto, crea al suo interno una
-    sottocartella col titolo del libro, per non mescolare i file. Restituisce il
-    `Project` già salvato su disco, pronto da aprire.
+    sottocartella col titolo del libro, per non mescolare i file. Copia anche le
+    immagini citate dai capitoli, mantenendo i percorsi relativi, così il PDF le
+    mostra. Restituisce il `Project` già salvato su disco, pronto da aprire.
     """
-    book = import_latex_project(src_folder)
+    from .compiler import find_main_tex
+
+    src = Path(src_folder)
+    book = import_latex_project(src)
     dest = Path(dest_folder)
     if dest.exists() and any(dest.iterdir()) and not Project.is_project(dest):
         safe = "".join(c for c in book.title if c.isalnum() or c in " -_").strip()
         dest = dest / (safe or "progetto_convertito")
     project = Project(dest, book)
     project.save()
+    # le immagini sono relative al .tex principale: copiale a partire da lì
+    main = find_main_tex(src)
+    copy_referenced_images(book, main.parent if main else src, dest)
     return project
 

@@ -248,7 +248,16 @@ class MainWindow(QMainWindow):
 
         # riassunto
         self.summary_edit = QPlainTextEdit()
-        self.tabs.addTab(self.summary_edit, "4 · Riassunto")
+        summary_wrap = QWidget()
+        summary_lay = QVBoxLayout(summary_wrap)
+        summary_btn_row = QHBoxLayout()
+        summary_btn = QPushButton(icon("note"), "Genera riassunto")
+        summary_btn.clicked.connect(self._chapter_resummarize)
+        summary_btn_row.addStretch(1)
+        summary_btn_row.addWidget(summary_btn)
+        summary_lay.addLayout(summary_btn_row)
+        summary_lay.addWidget(self.summary_edit)
+        self.tabs.addTab(summary_wrap, "4 · Riassunto")
 
         # intermezzo: testo interstiziale reso DOPO il capitolo
         self.intermezzo_edit = QPlainTextEdit()
@@ -820,6 +829,7 @@ class MainWindow(QMainWindow):
         def accept(text):
             self.summary_edit.setPlainText(text)
             self.tabs.setCurrentIndex(3)
+            self._save(silent=True)
         self._run_chapter_ai("Riassunto",
                              lambda: self.engine.summarize(ch.text),
                              accept, original=ch.summary)

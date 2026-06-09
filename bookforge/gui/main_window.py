@@ -12,6 +12,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QKeySequence, QShortcut
 
+import logging
+
 from ..core.model import Project, Chapter
 from ..core import compiler
 from ..core.settings import (
@@ -22,10 +24,15 @@ from .worker import GenerateWorker
 from .model_selector import ModelSelector
 from .icons import icon, app_icon
 
+log = logging.getLogger("bookforge")
+
 
 class MainWindow(QMainWindow):
     def __init__(self, project: Project):
         super().__init__()
+        # Breadcrumb nel log: con un crash nativo l'excepthook non scatta, ma
+        # questi passi indicano fino a dove è arrivata la costruzione.
+        log.info("MainWindow: inizializzazione (%s)", project.folder)
         self.project = project
         self.book = project.book
         self.worker: GenerateWorker | None = None
@@ -33,7 +40,10 @@ class MainWindow(QMainWindow):
 
         self.app_settings = AppSettings.load()
         self.engine_config = EngineConfig.from_settings(self.app_settings)
+        log.info("MainWindow: costruzione motore (%s/%s)",
+                 self.engine_config.provider, self.engine_config.model)
         self.engine, self.engine_real, msg = build_engine(self.engine_config)
+        log.info("MainWindow: motore pronto (reale=%s)", self.engine_real)
 
         # registra il progetto tra i recenti (per la schermata iniziale e il menu)
         self.app_settings.add_recent_project(self.project.folder)
@@ -45,12 +55,15 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"BookForge — {self.book.title}")
         self.setWindowIcon(app_icon())
         self.resize(1180, 760)
+        log.info("MainWindow: costruzione UI")
         self._build_ui()
+        log.info("MainWindow: popolamento capitoli e metadati")
         self._refresh_chapter_list()
         self._load_book_meta()
         self.statusBar().showMessage(msg)
         if self.book.chapters:
             self.chapter_list.setCurrentRow(0)
+        log.info("MainWindow: inizializzazione completata")
 
     # ============================================================ UI
     def _build_ui(self):

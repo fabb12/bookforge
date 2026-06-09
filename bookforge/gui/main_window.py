@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QTabWidget, QFormLayout, QComboBox, QGroupBox, QMessageBox, QProgressBar,
     QInputDialog, QFileDialog, QToolButton, QMenu, QProgressDialog,
 )
+from PyQt6.QtGui import QKeySequence, QShortcut
 
 from ..core.model import Project, Chapter
 from ..core import compiler
@@ -227,7 +228,32 @@ class MainWindow(QMainWindow):
 
         # latex
         self.latex_edit = QPlainTextEdit()
-        self.tabs.addTab(self.latex_edit, "3 · LaTeX")
+
+        # contenitore per latex e search/replace
+        latex_container = QWidget()
+        latex_layout = QVBoxLayout(latex_container)
+        latex_layout.setContentsMargins(0, 0, 0, 0)
+
+        from .search_replace import SearchReplaceWidget
+        self.latex_search_replace = SearchReplaceWidget(self.latex_edit, self)
+        self.latex_search_replace.hide()
+
+        latex_layout.addWidget(self.latex_search_replace)
+        latex_layout.addWidget(self.latex_edit)
+
+        self.tabs.addTab(latex_container, "3 · LaTeX")
+
+        # scorciatoia per la ricerca e sostituzione
+        shortcut_find = QShortcut(QKeySequence("Ctrl+F"), latex_container)
+        shortcut_find.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        shortcut_find.activated.connect(self._toggle_latex_search)
+
+    def _toggle_latex_search(self):
+        if self.latex_search_replace.isVisible():
+            self.latex_search_replace.hide()
+            self.latex_edit.setFocus()
+        else:
+            self.latex_search_replace.show()
 
         # evidenziazione sintassi LaTeX sulla scheda 3
         from .latex_highlighter import attach_latex_highlighter

@@ -33,9 +33,12 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
   - `EngineConfig` (+`from_env`), `build_engine(config, force_offline=False) -> (engine, is_real, msg)`.
   - `writer_prompt(book)` costruisce il system prompt dallo stile (`style_prompt` lo sovrascrive).
   - `DatapizzaEngine` (reale via `datapizza-ai`) e `MockEngine` (offline). **Stessa interfaccia**:
-    `write, coherence, format_latex, fix_latex, summarize, proofread, edit_text, outline, transitions,
-    bridge, generate_diagram, caption, image_prompt, review_notes, socratic_questions,
-    claim_notes, argument_map, book_section` (premessa/prologo/epilogo/quarta).
+    `write, coherence, format_latex, fix_latex, fix_latex_snippet, fix_chapter_latex, summarize,
+    proofread, edit_text, outline, transitions, bridge, generate_diagram, caption, image_prompt,
+    review_notes, socratic_questions, claim_notes, argument_map, book_section`
+    (premessa/prologo/epilogo/quarta). `fix_chapter_latex(latex, book)` controlla il LaTeX di un
+    singolo capitolo senza log di compilazione e spiega gli errori; `review_notes` ora include in
+    `excerpt` il «DOVE» (citazione letterale) per applicare la correzione puntuale.
   - `GenerationCancelled`: eccezione di interruzione cooperativa (i worker la sollevano
     dal callback di progresso quando l'utente preme «Interrompi»).
   - Pipeline a livello modulo: `process_chapter`, `autodraft_chapter`, `autodraft_book`.
@@ -56,12 +59,20 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
   isola le zone in errore (`compiler.error_regions`) e manda all'AI SOLO quei frammenti
   (`engine.fix_latex_snippet`, fallback `fix_latex` per documenti piccoli) → splicing →
   anteprima → ricompila, in ciclo automatico fino a `_MAX_FIX_ATTEMPTS` finché il PDF non è generato.
+  Per il singolo capitolo c'è invece `main_window._chapter_fix_latex` (menu «Capitolo (AI) → Sistema
+  il LaTeX»): controlla il corpo LaTeX del capitolo via `engine.fix_chapter_latex` e mostra la stessa
+  anteprima diff, senza compilare.
+- Revisione del mentore: `mentor_dialog` mostra le note con il «Dove» (excerpt) e un link «Applica qui»;
+  il click invoca `main_window._apply_mentor_fix`, che localizza il passaggio negli editor
+  (`_locate_excerpt`, ricerca tollerante), riscrive solo quella frase con `engine.edit_text` e la
+  applica dopo l'anteprima Accetta/Rifiuta.
 - Menu della finestra: «🛠 Strumenti» (converti progetto LaTeX → BookForge, Word→LaTeX→PDF,
   formatta .docx) e «⚙ Impostazioni» (API e modelli LLM).
 - Supporto: `ai_menu` (menu 🤖 a tasto destro), `ai_preview` (Accetta/Rifiuta/Rigenera),
   `latex_highlighter` (sintassi LaTeX), `pdf_view` (anteprima QtPdf + fallback), `theme` (QSS).
-- Worker (QThread): `worker` (generazione capitolo), `autogen_worker` (autopilota),
-  `docx_worker` (Word), `word_worker` (Word→LaTeX→PDF), `ai_worker` (chiamata AI generica).
+- Worker (QThread): `worker` (generazione capitolo), `docx_worker` (Word),
+  `word_worker` (Word→LaTeX→PDF), `ai_worker` (chiamata AI generica).
+  (`autogen_worker` esiste ancora ma non è più collegato a un menu.)
 
 ## Test
 - `tests/test_core.py` — moduli core puri (analisi, struttura, biblio, progressi,

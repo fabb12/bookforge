@@ -203,3 +203,22 @@ def test_parse_helpers():
     assert notes and notes[0]["issue"] == "x" and notes[0]["suggestion"] == "z"
     claims = _parse_claims("CLAIM: il 90% | MOTIVO: dato")
     assert claims and claims[0]["text"] == "il 90%"
+
+
+def test_parse_review_cattura_il_dove():
+    # il campo DOVE (citazione letterale) finisce in `excerpt` per la correzione puntuale
+    notes = _parse_review(
+        "PROBLEMA: frase contorta | PERCHÉ: poco chiara | "
+        "SUGGERIMENTO: semplifica | DOVE: «il quale, peraltro, …»")
+    assert notes and notes[0]["excerpt"] == "il quale, peraltro,"
+
+
+def test_fix_chapter_latex_offline():
+    eng = _engine()
+    b = Book(title="T")
+    # offline: esegue l'escape dei caratteri speciali non protetti (& # _) e descrive l'intervento
+    fixed, summary = eng.fix_chapter_latex("Pippo & Pluto con under_score e #tag.", b)
+    assert "\\&" in fixed and "\\_" in fixed and "\\#" in fixed
+    assert summary.strip()
+    # corpo vuoto: nessuna modifica
+    assert eng.fix_chapter_latex("", b) == ("", "")

@@ -209,6 +209,24 @@ FIX_LATEX_PROMPT = (
 )
 
 
+CHAPTER_LATEX_PROMPT = (
+    "Sei un esperto di LaTeX. Ricevi il CORPO LaTeX di un capitolo (senza "
+    "\\documentclass, preambolo o \\begin{document}). Controllalo e individua gli "
+    "errori che ne impedirebbero la compilazione o che sono scorretti: caratteri "
+    "speciali non scappati (&, %, $, #, _), graffe o ambienti \\begin/\\end non "
+    "bilanciati, comandi malformati o non chiusi, argomenti non terminati (runaway), "
+    "tabelle/elenchi mal formati. Correggi SOLO il minimo necessario: NON riscrivere "
+    "il contenuto, non togliere testo dell'autore, non cambiare lo stile. Se non trovi "
+    "alcun errore, lascia il corpo invariato e scrivilo nelle modifiche.\n\n"
+    "Rispondi ESATTAMENTE in questo formato, senza blocchi di codice markdown:\n"
+    "MODIFICHE:\n"
+    "- <per ogni errore trovato: dov'era, cosa c'era di sbagliato e come l'hai "
+    "corretto, in italiano; se non ci sono errori scrivi «Nessun errore trovato»>\n"
+    "SORGENTE:\n"
+    "<il corpo LaTeX corretto>"
+)
+
+
 FIX_LATEX_SNIPPET_PROMPT = (
     "Sei un esperto di LaTeX. Ricevi un FRAMMENTO del corpo di un documento .tex "
     "che contiene uno o più errori di compilazione, insieme al LOG. Correggi SOLO "
@@ -319,8 +337,11 @@ REVIEW_PROMPT = (
     "FEEDBACK per far crescere l'autore: NON riscrivere il testo. Individua al massimo "
     "5 punti migliorabili (chiarezza, struttura, logica, stile, ritmo). Per ciascuno "
     "scrivi una riga nel formato esatto:\n"
-    "PROBLEMA: ... | PERCHÉ: ... | SUGGERIMENTO: ...\n"
-    "Sii concreto e didattico; spiega il PERCHÉ così l'autore impara. Nessun'altra riga."
+    "PROBLEMA: ... | PERCHÉ: ... | SUGGERIMENTO: ... | DOVE: ...\n"
+    "In DOVE riporta una BREVE citazione letterale (da 4 a 12 parole) copiata "
+    "ESATTAMENTE dal brano, che individui il punto preciso a cui si riferisce la nota: "
+    "serve a localizzare il passaggio e applicarvi la correzione. Sii concreto e "
+    "didattico; spiega il PERCHÉ così l'autore impara. Nessun'altra riga."
 )
 
 SOCRATIC_PROMPT = (
@@ -427,6 +448,19 @@ class DatapizzaEngine:
         out = a.run(task).text.strip()
         fixed, summary = _parse_latex_fix(out)
         return (fixed or snippet), summary
+
+    def fix_chapter_latex(self, latex: str, book: Book | None = None) -> tuple[str, str]:
+        """Controlla il LaTeX di un capitolo e lo corregge spiegando ogni intervento.
+
+        A differenza di `fix_latex*`, non serve un log di compilazione: il motore
+        ispeziona il corpo del capitolo, trova gli errori LaTeX e propone come
+        modificarli. Ritorna (corpo corretto, riepilogo delle modifiche)."""
+        if not (latex or "").strip():
+            return latex, ""
+        a = self._agent("chapterlatex", CHAPTER_LATEX_PROMPT)
+        out = a.run(latex).text.strip()
+        fixed, summary = _parse_latex_fix(out)
+        return (fixed or latex), summary
 
     def summarize(self, text: str) -> str:
         a = self._agent("summary", SUMMARY_PROMPT)
@@ -695,6 +729,12 @@ class MockEngine:
         """Correzione offline di un frammento (parità con `DatapizzaEngine`)."""
         return self._offline_escape(snippet)
 
+    def fix_chapter_latex(self, latex: str, book: Book | None = None) -> tuple[str, str]:
+        """Controllo LaTeX offline del capitolo (parità con `DatapizzaEngine`)."""
+        if not (latex or "").strip():
+            return latex, ""
+        return self._offline_escape(latex)
+
     def summarize(self, text: str) -> str:
         first = text.strip().split("\n\n")[0]
         return (first[:280] + "…") if len(first) > 280 else first
@@ -933,7 +973,12 @@ def _strip_code_fences(s: str) -> str:
 
 
 def _parse_review(out: str) -> list[dict]:
-    """Interpreta le righe «PROBLEMA: ... | PERCHÉ: ... | SUGGERIMENTO: ...»."""
+    """Interpreta «PROBLEMA: ... | PERCHÉ: ... | SUGGERIMENTO: ... | DOVE: ...».
+
+    Il campo DOVE (citazione letterale) finisce in `excerpt`: localizza il punto
+    del testo a cui si riferisce la nota, così la GUI può applicare la correzione
+    puntuale proprio lì.
+    """
     notes: list[dict] = []
     for line in out.splitlines():
         line = line.strip().lstrip("-•*").strip()
@@ -945,7 +990,9 @@ def _parse_review(out: str) -> list[dict]:
             "issue": parts.get("problema", line),
             "detail": parts.get("perché", parts.get("perche", "")),
             "suggestion": parts.get("suggerimento", ""),
-            "severity": "warn", "excerpt": "", "source": "ai",
+            "severity": "warn",
+            "excerpt": parts.get("dove", "").strip(" «»\"'…"),
+            "source": "ai",
         })
     return notes
 

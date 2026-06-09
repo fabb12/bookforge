@@ -20,11 +20,14 @@ from .icons import icon, app_icon
 
 
 class MentorDialog(QDialog):
-    def __init__(self, parent, engine, book, text: str):
+    def __init__(self, parent, engine, book, text: str, on_apply=None):
         super().__init__(parent)
         self.engine = engine
         self.book = book
         self.text = text or ""
+        # callback(note: dict) -> None: applica il suggerimento puntuale al punto
+        # indicato dalla nota (lo gestisce la finestra principale, che possiede gli editor)
+        self._on_apply = on_apply
         self._worker: AiWorker | None = None
 
         self.setWindowTitle("Modalità Mentore")
@@ -41,6 +44,11 @@ class MentorDialog(QDialog):
 
         self.tabs = QTabWidget()
         self.notes_view = QTextBrowser()
+        # i link «Applica» nelle note non sono URL da aprire: li intercettiamo per
+        # applicare la correzione puntuale al punto indicato dalla nota.
+        self.notes_view.setOpenLinks(False)
+        self.notes_view.setOpenExternalLinks(False)
+        self.notes_view.anchorClicked.connect(self._on_note_anchor)
         self.questions_view = QTextBrowser()
         self.claims_view = QTextBrowser()
         self.tabs.addTab(self.notes_view, "Revisione")
@@ -81,9 +89,22 @@ class MentorDialog(QDialog):
         self._refresh_views()
 
     def _refresh_views(self):
-        self.notes_view.setHtml(_notes_html(self._notes))
+        self.notes_view.setHtml(_notes_html(self._notes, can_apply=self._on_apply is not None))
         self.questions_view.setHtml(_questions_html(self._questions))
         self.claims_view.setHtml(_claims_html(self._claims))
+
+    def _on_note_anchor(self, url):
+        """Gestisce il click su «Applica»: applica il suggerimento della nota."""
+        ref = url.toString()
+        if not ref.startswith("apply:"):
+            return
+        try:
+            i = int(ref.split(":", 1)[1])
+        except ValueError:
+            return
+        if not (0 <= i < len(self._notes)) or self._on_apply is None:
+            return
+        self._on_apply(self._notes[i])
 
     # ---------------------------------------------------------- AI
     def _enrich_with_ai(self):
@@ -132,11 +153,11 @@ def _badge(source: str) -> str:
     return "🤖 AI" if source == "ai" else "🔎 euristica"
 
 
-def _notes_html(notes: list[dict]) -> str:
+def _notes_html(notes: list[dict], can_apply: bool = False) -> str:
     if not notes:
         return "<p>Nessun rilievo. Ottimo lavoro ✨</p>"
     out = []
-    for n in notes:
+    for i, n in enumerate(notes):
         out.append(
             f"<p><b>{escape(n.get('issue',''))}</b> "
             f"<span style='color:#888'>· {_badge(n.get('source',''))}</span><br>")
@@ -145,7 +166,12 @@ def _notes_html(notes: list[dict]) -> str:
         if n.get("suggestion"):
             out.append(f"<i>Suggerimento:</i> {escape(n['suggestion'])}<br>")
         if n.get("excerpt"):
-            out.append(f"<span style='color:#888'>«{escape(n['excerpt'])}…»</span>")
+            out.append(f"<i>Dove:</i> <span style='color:#888'>«{escape(n['excerpt'])}…»</span><br>")
+        # link «Applica»: solo se la nota ha un suggerimento e un punto dove agire
+        if can_apply and n.get("suggestion") and n.get("excerpt"):
+            out.append(
+                f"<a href='apply:{i}' style='color:#7aa2f7;text-decoration:none'>"
+                "▸ Applica qui il suggerimento</a>")
         out.append("</p>")
     return "".join(out)
 

@@ -58,6 +58,63 @@ def _default_model_for(provider: str) -> str:
     return _IDEOGRAM_DEFAULT_MODEL if provider == "ideogram" else "imagen-3.0-generate-002"
 
 
+# --- Stili di disegno -----------------------------------------------------
+# Catalogo di stili visivi associabili a un'immagine: etichetta in italiano
+# (mostrata nella UI) → descrittore in inglese, appeso al prompt prima di
+# inviarlo al modello text-to-image. La voce vuota lascia lo stile «libero».
+IMAGE_STYLES: dict[str, str] = {
+    "Predefinito (nessuno stile)": "",
+    "Infografica": ("infographic style, clean flat vector graphics, schematic, "
+                    "labeled diagram, minimal color palette, informative"),
+    "Disegno di un bambino": ("child's crayon drawing, naive and playful, "
+                              "hand-drawn with colored crayons, simple shapes"),
+    "Fotorealistico": ("photorealistic, high detail, natural lighting, "
+                       "sharp focus, realistic textures"),
+    "Acquerello": ("watercolor painting, soft washes, delicate brush strokes, "
+                   "textured paper, artistic"),
+    "Schizzo a matita": ("detailed pencil sketch, black and white, hand-drawn, "
+                         "fine cross-hatching"),
+    "Fumetto": ("comic book illustration, bold ink outlines, cel shading, "
+                "dynamic, vibrant colors"),
+    "Minimalista": ("minimalist illustration, simple shapes, limited palette, "
+                    "generous negative space, clean lines"),
+    "Pittura a olio": ("oil painting, rich textures, visible brushstrokes, "
+                       "classical, warm tones"),
+    "Render 3D": ("3D render, soft studio lighting, smooth materials, "
+                  "high quality, octane render"),
+    "Vintage": ("vintage retro illustration, muted colors, aged paper texture, "
+                "mid-century style"),
+    "Lavagna": ("chalkboard drawing, white chalk on a dark background, "
+                "hand-drawn, educational"),
+}
+
+
+def style_descriptor(style: str) -> str:
+    """Descrittore inglese per un'etichetta di stile.
+
+    Se l'etichetta è nel catalogo, restituisce il suo descrittore (eventualmente
+    vuoto per «Predefinito»). Altrimenti tratta la stringa come stile libero,
+    usandola così com'è — così la UI può anche offrire uno stile personalizzato.
+    """
+    if style in IMAGE_STYLES:
+        return IMAGE_STYLES[style]
+    return style.strip()
+
+
+def compose_prompt(base: str, style: str = "") -> str:
+    """Combina il prompt base con il descrittore dello stile scelto.
+
+    Funzione pura: il prompt dell'AI resta il soggetto, lo stile viene appeso in
+    coda così da indirizzare in modo deterministico il modello text-to-image.
+    """
+    base = (base or "").strip()
+    desc = style_descriptor(style)
+    if not desc:
+        return base
+    sep = "" if base.endswith((".", ",", ";", ":")) else "."
+    return f"{base}{sep} {desc}".strip()
+
+
 @dataclass
 class ImageGenConfig:
     provider: str = "google"            # google | ideogram

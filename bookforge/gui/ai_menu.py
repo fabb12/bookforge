@@ -4,7 +4,8 @@
 QTextEdit e gestisce:
   • comandi sulla selezione (riscrivi, espandi, accorcia, continua, …);
   • generazione di diagrammi come codice (TikZ) o immagine (Mermaid renderizzato);
-  • generazione di immagini raster (Google Imagen) con didascalia automatica.
+  • generazione di immagini raster (Google/Ideogram) con scelta dello stile di
+    disegno, varianti multiple e selezione dell'immagine prima dell'inserimento.
 
 Ogni proposta passa dall'anteprima (Accetta/Rifiuta/Rigenera): l'AI non
 sovrascrive mai senza conferma.
@@ -20,10 +21,13 @@ from PyQt6.QtWidgets import (
     QMenu, QMessageBox, QInputDialog, QProgressDialog,
 )
 
+from dataclasses import replace
+
 from ..agents.commands import TEXT_COMMANDS, TextCommand
 from ..core import diagram, image_gen
 from .ai_worker import AiWorker
 from .ai_preview import AiPreviewDialog
+from .image_dialog import ImageOptionsDialog, ImagePreviewDialog
 from .icons import icon
 
 # icona minimale associata a ciascun comando di editing testuale (per chiave)
@@ -243,24 +247,64 @@ class AiEditingController:
             QMessageBox.warning(self.parent, "Immagine",
                                 "Salva prima il file: serve una cartella per l'immagine.")
             return
-        # Nome file derivato dalla descrizione, reso univoco per non sovrascrivere.
-        name = re.sub(r"[^a-z0-9]+", "_", desc.lower()).strip("_")[:30] or "immagine"
-        out = self._unique_path(Path(base) / "images", name)
+        # Opzioni sotto il controllo dell'autore: descrizione, stile, proporzioni
+        # e quante varianti generare (poi ne sceglierà una).
+        opts = ImageOptionsDialog(self.parent, desc, default_aspect=cfg.aspect_ratio)
+        if not opts.exec():
+            return
+        description = opts.description or desc
+        style = opts.style_label
+        count = opts.variants
+        cfg = replace(cfg, aspect_ratio=opts.aspect_ratio)
+        self._run_image_generation(description, style, count, cfg, Path(base))
+
+    def _run_image_generation(self, description: str, style: str, count: int,
+                              cfg, base: Path):
+        """Genera le immagini, le mostra in anteprima e inserisce quella scelta.
+
+        Tenuto separato dalla raccolta opzioni così che «Rigenera» possa rilanciare
+        la stessa configurazione senza richiedere di nuovo all'utente le scelte.
+        """
+        eng = self._engine_or_warn()
+        if eng is None:
+            return
         book = self.get_book()
+        name = re.sub(r"[^a-z0-9]+", "_", description.lower()).strip("_")[:30] or "immagine"
 
         def fn():
-            prompt = eng.image_prompt(desc, book)
-            image_gen.generate_image(prompt, out, cfg)
-            caption = eng.caption(desc, book)
-            return caption
+            base_prompt = eng.image_prompt(description, book)
+            prompt = image_gen.compose_prompt(base_prompt, style)
+            paths: list[Path] = []
+            for _ in range(max(1, count)):
+                out = self._unique_path(base / "images", name)
+                image_gen.generate_image(prompt, out, cfg)
+                paths.append(out)
+            caption = eng.caption(description, book)
+            return paths, caption
 
-        def on_done(caption):
-            rel = f"images/{out.name}"
-            snippet = diagram.image_figure(rel, caption)
-            dlg = AiPreviewDialog(self.parent, "AI — Immagine", original="",
-                                  proposed=snippet, allow_regenerate=False)
+        def on_done(result):
+            paths, caption = result
+            dlg = ImagePreviewDialog(self.parent, paths, caption, allow_regenerate=True)
             dlg.exec()
             if dlg.action == "accept":
-                self._insert_at_cursor("\n" + dlg.result_text + "\n")
+                chosen = dlg.selected_path or paths[0]
+                self._cleanup_unused(paths, keep=chosen)
+                rel = f"images/{chosen.name}"
+                snippet = diagram.image_figure(rel, dlg.caption_text)
+                self._insert_at_cursor("\n" + snippet + "\n")
+            else:
+                # rifiuto o rigenera: scarta tutte le immagini prodotte
+                self._cleanup_unused(paths, keep=None)
+                if dlg.action == "regenerate":
+                    self._run_image_generation(description, style, count, cfg, base)
 
         self._start("Genero l'immagine…", fn, on_done)
+
+    def _cleanup_unused(self, paths: list[Path], keep: Path | None):
+        """Rimuove le immagini non scelte per non lasciare file orfani in `images/`."""
+        for p in paths:
+            if p != keep:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass

@@ -33,6 +33,37 @@ def test_provider_sconosciuto_resta_non_supportato():
     assert "non supportato" in msg
 
 
+# --------------------------------------------------------- stili di disegno
+def test_compose_prompt_appende_descrittore_stile():
+    out = image_gen.compose_prompt("un faro al tramonto", "Infografica")
+    assert out.startswith("un faro al tramonto.")
+    assert "infographic" in out
+
+
+def test_compose_prompt_stile_predefinito_lascia_invariato():
+    base = "un faro al tramonto"
+    # la voce «Predefinito» ha descrittore vuoto: nessuna aggiunta
+    label = next(iter(image_gen.IMAGE_STYLES))   # prima voce = Predefinito
+    assert image_gen.IMAGE_STYLES[label] == ""
+    assert image_gen.compose_prompt(base, label) == base
+
+
+def test_compose_prompt_stile_libero_usato_cosi_com_e():
+    out = image_gen.compose_prompt("gatto", "stile pixel art")
+    assert out == "gatto. stile pixel art"
+
+
+def test_compose_prompt_non_duplica_punteggiatura():
+    out = image_gen.compose_prompt("un faro,", "Infografica")
+    assert out.startswith("un faro,")        # nessun punto extra dopo la virgola
+    assert ",." not in out
+
+
+def test_image_styles_disegno_bambino_presente():
+    assert "Disegno di un bambino" in image_gen.IMAGE_STYLES
+    assert "crayon" in image_gen.IMAGE_STYLES["Disegno di un bambino"]
+
+
 # --------------------------------------------------------- from_env
 def test_from_env_ideogram_usa_modello_e_chiave(monkeypatch):
     monkeypatch.setenv("BOOKFORGE_IMAGE_PROVIDER", "ideogram")

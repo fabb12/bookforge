@@ -43,6 +43,7 @@ class BookStyle:
     font_size: str = "11pt"
     paper: str = "a4paper"
     bib_style: str = "plain"            # stile BibTeX (plain | alpha | unsrt | ...)
+    layout: str = "classico"            # classico | editoriale (impaginazione professionale)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -66,7 +67,15 @@ class Book:
     preface: str = ""               # testo della prefazione (LaTeX)
     prologue: str = ""              # prologo (front matter, dopo la prefazione)
     epilogue: str = ""              # epilogo / fine libro (back matter)
-    back_cover: str = ""            # quarta di copertina (LaTeX)
+    back_cover: str = ""            # quarta di copertina (LaTeX) — usata dal layout classico
+    # --- metadati editoriali (usati dal layout "editoriale") ---
+    subtitle_b: str = ""            # seconda riga di sottotitolo nel frontespizio
+    publisher: str = ""             # editore (frontespizio, copyright, quarta)
+    isbn: str = ""                  # codice ISBN (copyright e quarta)
+    price: str = ""                 # prezzo di copertina (es. "18,00") per la quarta
+    back_quote: str = ""            # citazione in alto sulla quarta editoriale
+    back_quote_author: str = ""     # autore della citazione di quarta
+    back_blurb: str = ""            # testo descrittivo della quarta (fallback: abstract)
     style: BookStyle = field(default_factory=BookStyle)
     chapters: list[Chapter] = field(default_factory=list)
 
@@ -122,6 +131,10 @@ class Book:
             "cover_image": self.cover_image, "premise": self.premise,
             "preface": self.preface, "prologue": self.prologue,
             "epilogue": self.epilogue, "back_cover": self.back_cover,
+            "subtitle_b": self.subtitle_b, "publisher": self.publisher,
+            "isbn": self.isbn, "price": self.price,
+            "back_quote": self.back_quote, "back_quote_author": self.back_quote_author,
+            "back_blurb": self.back_blurb,
             "style": self.style.to_dict(),
             "chapters": [c.to_dict() for c in self.chapters],
         }
@@ -141,6 +154,13 @@ class Book:
             prologue=d.get("prologue", ""),
             epilogue=d.get("epilogue", ""),
             back_cover=d.get("back_cover", ""),
+            subtitle_b=d.get("subtitle_b", ""),
+            publisher=d.get("publisher", ""),
+            isbn=d.get("isbn", ""),
+            price=d.get("price", ""),
+            back_quote=d.get("back_quote", ""),
+            back_quote_author=d.get("back_quote_author", ""),
+            back_blurb=d.get("back_blurb", ""),
             style=BookStyle.from_dict(d.get("style", {})),
         )
         b.chapters = [Chapter.from_dict(c) for c in d.get("chapters", [])]

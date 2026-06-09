@@ -1067,17 +1067,22 @@ class MainWindow(QMainWindow):
         self._present_compile_result(ok, log)
 
     def _fix_latex_with_ai(self):
-        """Usa il log degli errori per chiedere al motore di correggere il .tex.
+        """Corregge gli errori di compilazione mandando all'AI solo le zone in errore.
 
-        Il sorgente corrente e gli errori estratti vengono passati a
-        `engine.fix_latex`; la proposta passa dall'anteprima Accetta/Rifiuta. Se
-        accettata, il .tex corretto viene salvato e ricompilato (via `compile_tex`,
-        così la correzione non viene sovrascritta dalla rigenerazione dal modello).
+        Dal log si isolano le righe segnalate (`l.NN`, runaway) e si inviano al
+        motore SOLO quei frammenti — non l'intero .tex, che su libri lunghi
+        supererebbe il limite di token. La proposta passa dall'anteprima
+        Accetta/Rifiuta; se accettata, il .tex corretto viene salvato e
+        ricompilato (via `compile_tex`, così non viene sovrascritto dalla
+        rigenerazione dal modello), e il ciclo prosegue finché restano errori.
         """
         self._run_latex_fix(attempt=1)
 
     # numero massimo di giri automatici fix→ricompila (evita loop infiniti)
     _MAX_FIX_ATTEMPTS = 4
+    # oltre questa dimensione il .tex non si invia per intero (limite token LLM):
+    # ci si affida alla correzione localizzata sulle sole zone in errore.
+    _WHOLE_FIX_CHAR_LIMIT = 120_000
 
     def _run_latex_fix(self, attempt: int):
         """Un giro del ciclo di riparazione: proponi → (accetta) → ricompila.
@@ -1103,30 +1108,70 @@ class MainWindow(QMainWindow):
                                     "Nessun errore riconoscibile nel log.")
             return
 
+        # Manda all'LLM SOLO le zone in errore (i documenti grandi superano il
+        # limite di token): individua le finestre attorno alle righe segnalate.
+        lines = source.splitlines()
+        regions = compiler.error_regions(source, log)
+        if regions:
+            snippets = [(s, e, "\n".join(lines[s:e])) for s, e in regions]
+            use_whole = False
+        elif len(source) <= self._WHOLE_FIX_CHAR_LIMIT:
+            # documento piccolo e nessuna riga localizzabile: correggi tutto
+            snippets = [(0, len(lines), source)]
+            use_whole = True
+        else:
+            QMessageBox.warning(
+                self, "Correzione LaTeX",
+                "Non riesco a localizzare le righe in errore nel log e il "
+                "documento è troppo grande per inviarlo per intero all'AI.\n"
+                "Apri il «Log LaTeX» e correggi manualmente le righe segnalate.")
+            return
+
         from .ai_worker import AiWorker
         from .latex_fix_dialog import LatexFixDialog
         if getattr(self, "_fix_worker", None) and self._fix_worker.isRunning():
             return
+        zona = "tutto il documento" if use_whole else (
+            f"{len(snippets)} zona/e in errore")
         busy = QProgressDialog(
-            f"Analizzo gli errori e correggo il LaTeX… (tentativo {attempt})",
-            None, 0, 0, self)
+            f"Correggo {zona}… (tentativo {attempt})", None, 0, 0, self)
         busy.setWindowTitle("AI"); busy.setCancelButton(None)
         busy.setMinimumDuration(0); busy.show()
 
         def fn():
-            return self.engine.fix_latex(source, errors)
+            out = []
+            for (s, e, text) in snippets:
+                if use_whole:
+                    fixed, summ = self.engine.fix_latex(text, errors)
+                else:
+                    fixed, summ = self.engine.fix_latex_snippet(text, errors)
+                out.append((s, e, text, str(fixed), summ))
+            return out
 
         def done(result):
             busy.close()
-            fixed, summary = result
-            fixed = str(fixed).strip()
-            if not fixed or fixed == source.strip():
+            # ricostruisci il sorgente sostituendo solo le zone corrette (dalla
+            # fine all'inizio, così gli indici delle zone precedenti non slittano)
+            new_lines = source.splitlines()
+            summaries, changed = [], False
+            for s, e, orig, fixed, summ in sorted(result, key=lambda r: r[0],
+                                                  reverse=True):
+                if fixed.strip() and fixed.strip() != orig.strip():
+                    new_lines[s:e] = fixed.splitlines()
+                    changed = True
+                if summ and summ.strip():
+                    summaries.append(summ.strip())
+            proposed = "\n".join(new_lines)
+            if source.endswith("\n") and not proposed.endswith("\n"):
+                proposed += "\n"
+            if not changed or proposed.strip() == source.strip():
                 QMessageBox.information(
                     self, "Correzione LaTeX",
-                    "Il motore non ha proposto modifiche al sorgente. "
+                    "Il motore non ha proposto modifiche. "
                     "Apri il «Log LaTeX» per esaminare gli errori manualmente.")
                 return
-            dlg = LatexFixDialog(self, original=source, proposed=fixed,
+            summary = "\n".join(summaries) or "(modifiche sulle zone in errore)"
+            dlg = LatexFixDialog(self, original=source, proposed=proposed,
                                  summary=summary, attempt=attempt,
                                  allow_regenerate=True)
             dlg.exec()

@@ -209,14 +209,32 @@ FIX_LATEX_PROMPT = (
 )
 
 
-def _parse_latex_fix(out: str) -> tuple[str, str]:
-    """Separa la spiegazione delle modifiche dal sorgente corretto.
+FIX_LATEX_SNIPPET_PROMPT = (
+    "Sei un esperto di LaTeX. Ricevi un FRAMMENTO del corpo di un documento .tex "
+    "che contiene uno o più errori di compilazione, insieme al LOG. Correggi SOLO "
+    "il minimo necessario perché il frammento sia valido: escape dei caratteri "
+    "speciali (&, %, $, #, _), graffe o ambienti non bilanciati, comandi/colori non "
+    "definiti, argomenti non chiusi (runaway). NON aggiungere \\documentclass, "
+    "preamboli o \\begin{document}: è solo un estratto, non il documento intero. "
+    "Mantieni inalterato il testo dell'autore e, per quanto possibile, il numero di "
+    "righe.\n\n"
+    "Rispondi ESATTAMENTE in questo formato, senza blocchi di codice markdown:\n"
+    "MODIFICHE:\n"
+    "- <descrizione concisa di ogni modifica fatta, una per riga, in italiano>\n"
+    "FRAMMENTO:\n"
+    "<il frammento corretto>"
+)
 
-    Il motore risponde con un blocco `MODIFICHE:` seguito da `SORGENTE:`. Se i
-    marcatori mancano (modello poco collaborativo), si assume che l'intero output
-    sia il sorgente e la spiegazione resti vuota.
+
+def _parse_latex_fix(out: str) -> tuple[str, str]:
+    """Separa la spiegazione delle modifiche dal testo corretto.
+
+    Il motore risponde con un blocco `MODIFICHE:` seguito dal corpo corretto
+    introdotto da `SORGENTE:` o `FRAMMENTO:`. Se i marcatori mancano (modello poco
+    collaborativo), si assume che l'intero output sia il testo e la spiegazione
+    resti vuota.
     """
-    m = re.search(r"(?is)\bSORGENTE\s*:\s*\n?", out)
+    m = re.search(r"(?is)\b(?:SORGENTE|FRAMMENTO|CORRETTO)\s*:\s*\n?", out)
     if not m:
         return _strip_code_fences(out.strip()), ""
     summary = out[:m.start()]
@@ -398,6 +416,17 @@ class DatapizzaEngine:
         out = a.run(task).text.strip()
         fixed, summary = _parse_latex_fix(out)
         return (fixed or source), summary
+
+    def fix_latex_snippet(self, snippet: str, errors: str) -> tuple[str, str]:
+        """Corregge un FRAMMENTO (non l'intero documento) dagli errori del log.
+
+        Pensato per documenti grandi: si manda solo la zona in errore, non tutto
+        il .tex. Ritorna (frammento corretto, riepilogo)."""
+        a = self._agent("latexfixer", FIX_LATEX_SNIPPET_PROMPT)
+        task = f"ERRORI DI COMPILAZIONE:\n{errors}\n\nFRAMMENTO DA CORREGGERE:\n{snippet}"
+        out = a.run(task).text.strip()
+        fixed, summary = _parse_latex_fix(out)
+        return (fixed or snippet), summary
 
     def summarize(self, text: str) -> str:
         a = self._agent("summary", SUMMARY_PROMPT)
@@ -633,19 +662,17 @@ class MockEngine:
         return "\n\n".join(escape_latex(p.strip())
                            for p in text.split("\n\n") if p.strip())
 
-    def fix_latex(self, source: str, errors: str) -> tuple[str, str]:
-        """Correzione offline: escape conservativo dei caratteri speciali nudi.
+    @staticmethod
+    def _offline_escape(text: str) -> tuple[str, str]:
+        """Escape conservativo di `& # _` nudi. Ritorna (testo, riepilogo).
 
         Senza LLM non si può ragionare sul log, ma molti errori di compilazione
-        nascono da caratteri speciali non scappati nel corpo del testo. Qui si
-        applica un escape prudente di `& # _` solo quando NON sono già preceduti
-        da un backslash, lasciando intatto tutto il resto. Ritorna (sorgente,
-        riepilogo), come `DatapizzaEngine.fix_latex`.
+        nascono da caratteri speciali non scappati nel corpo del testo. Si applica
+        un escape prudente solo quando NON sono già preceduti da un backslash; le
+        righe che iniziano con `%` (commenti) restano intatte.
         """
-        # le righe che iniziano con `%` sono commenti: si lasciano intatte.
-        out_lines = []
-        changes = 0
-        for line in source.splitlines():
+        out_lines, changes = [], 0
+        for line in text.splitlines():
             if line.lstrip().startswith("%"):
                 out_lines.append(line)
                 continue
@@ -659,6 +686,14 @@ class MockEngine:
             summary = ("- Nessuna correzione automatica disponibile offline: "
                        "servirebbe un motore AI per interpretare il log.")
         return "\n".join(out_lines), summary
+
+    def fix_latex(self, source: str, errors: str) -> tuple[str, str]:
+        """Correzione offline dell'intero sorgente (parità con `DatapizzaEngine`)."""
+        return self._offline_escape(source)
+
+    def fix_latex_snippet(self, snippet: str, errors: str) -> tuple[str, str]:
+        """Correzione offline di un frammento (parità con `DatapizzaEngine`)."""
+        return self._offline_escape(snippet)
 
     def summarize(self, text: str) -> str:
         first = text.strip().split("\n\n")[0]

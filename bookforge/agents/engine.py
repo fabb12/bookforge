@@ -410,10 +410,13 @@ class DatapizzaEngine:
         return _parse_claims(out)
 
     def argument_map(self, book: Book, ch: Chapter) -> str:
+        from ..core.analysis import readable_text
         a = self._agent("argmapper", ARGMAP_PROMPT)
+        # se mancano i concetti, lavora sul risultato finale (LaTeX ripulito o prosa)
+        content = ch.raw_concepts or readable_text(ch.text, ch.latex) or "(nessuno)"
         task = (f"Titolo del capitolo: «{ch.title}».\n"
                 f"Argomento del libro: «{book.topic or book.title}».\n"
-                f"Concetti:\n{ch.raw_concepts or ch.text or '(nessuno)'}")
+                f"Concetti:\n{content}")
         return a.run(task).text.strip()
 
     # -- sezioni speciali (premessa/prologo/epilogo/quarta) ----------------
@@ -527,8 +530,9 @@ class MockEngine:
                 for f in flag_claims(text)]
 
     def argument_map(self, book: Book, ch: Chapter) -> str:
-        pts = [c.strip() for c in re.split(r"[\n;.]", ch.raw_concepts or ch.text)
-               if c.strip()]
+        from ..core.analysis import readable_text
+        src = ch.raw_concepts or readable_text(ch.text, ch.latex)
+        pts = [c.strip() for c in re.split(r"[\n;.]", src) if c.strip()]
         lines = [f"TESI: {ch.title}"]
         for p in pts[:4]:
             lines.append(f"ARGOMENTO: {p}")

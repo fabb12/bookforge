@@ -9,16 +9,21 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from .analysis import analyze, TextMetrics
+from .analysis import analyze, readable_text, TextMetrics
 
 PROGRESS_FILE = "progress.json"
 
 
 def _book_text_metrics(book) -> tuple[TextMetrics, dict]:
-    """Metriche aggregate sull'intero libro + per capitolo."""
-    full = "\n\n".join((c.text or "") for c in book.chapters)
+    """Metriche aggregate sull'intero libro + per capitolo.
+
+    Analizza il risultato finale di ogni capitolo (LaTeX ripulito se presente,
+    altrimenti la prosa): vedi `analysis.readable_text`.
+    """
+    per_text = {c.title: readable_text(c.text, c.latex) for c in book.chapters}
+    full = "\n\n".join(per_text.values())
     overall = analyze(full)
-    per_chapter = {c.title: analyze(c.text or "").to_dict() for c in book.chapters}
+    per_chapter = {title: analyze(txt).to_dict() for title, txt in per_text.items()}
     return overall, per_chapter
 
 

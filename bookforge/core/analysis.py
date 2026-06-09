@@ -83,6 +83,66 @@ def _words(text: str) -> list[str]:
     return re.findall(r"[A-Za-zÀ-ÿ']+", text)
 
 
+# ------------------------------------------------------------------ LaTeX -> prosa
+# Comandi i cui argomenti NON sono prosa leggibile (riferimenti, indici, risorse).
+_LATEX_DROP_RE = re.compile(
+    r"\\(?:label|ref|eqref|pageref|autoref|cite[a-z]*|nocite|index|"
+    r"includegraphics|input|include|usepackage|documentclass|"
+    r"bibliographystyle|bibliography|hspace|vspace|setlength)\s*"
+    r"(?:\[[^\]]*\])?\s*(?:\{[^{}]*\})?",
+    re.IGNORECASE,
+)
+_LATEX_COMMENT_RE = re.compile(r"(?<!\\)%.*")
+_LATEX_MATH_RE = re.compile(
+    r"\$\$.*?\$\$|\$.*?\$|\\\[.*?\\\]|\\\(.*?\\\)", re.DOTALL)
+_LATEX_ENV_RE = re.compile(r"\\(?:begin|end)\s*\{[^}]*\}(?:\[[^\]]*\])?")
+_LATEX_WRAP_RE = re.compile(r"\\[a-zA-Z@]+\*?(?:\[[^\]]*\])?\{([^{}]*)\}")
+_LATEX_BARE_RE = re.compile(r"\\[a-zA-Z@]+\*?")
+_LATEX_ESC_RE = re.compile(r"\\([%&_#$\{\}])")
+
+
+def latex_to_text(s: str) -> str:
+    """Riduce un corpo LaTeX a prosa leggibile per l'analisi di stile/metriche.
+
+    Non è un parser completo: elimina commenti, formule, ambienti e comandi di
+    sola formattazione/riferimento, conservando il testo che il lettore vedrà.
+    """
+    if not s:
+        return ""
+    t = _LATEX_COMMENT_RE.sub("", s)         # commenti
+    t = _LATEX_MATH_RE.sub(" ", t)           # formule (inline e display)
+    t = _LATEX_DROP_RE.sub("", t)            # comandi senza prosa (con argomento)
+    t = _LATEX_ENV_RE.sub("", t)             # \begin{...} / \end{...}
+    # comandi che avvolgono testo (\textbf{...}, \emph{...}, \chapter{...}):
+    # conserva il contenuto, più passate per gestire i nidi dall'interno.
+    for _ in range(6):
+        new = _LATEX_WRAP_RE.sub(r"\1", t)
+        if new == t:
+            break
+        t = new
+    t = _LATEX_BARE_RE.sub(" ", t)           # comandi rimasti senza argomento
+    t = t.replace("\\\\", " ")               # a capo forzati
+    t = t.replace("~", " ")                  # spazi insecabili
+    t = _LATEX_ESC_RE.sub(r"\1", t)          # caratteri escapati (\% \& ...)
+    t = re.sub(r"[{}]", "", t)               # graffe orfane
+    t = re.sub(r"[ \t]+", " ", t)
+    t = re.sub(r"\n[ \t]*\n\s*", "\n\n", t)  # normalizza i paragrafi
+    return t.strip()
+
+
+def readable_text(text: str, latex: str = "") -> str:
+    """Contenuto da analizzare: il *risultato finale* del capitolo.
+
+    Rispecchia `latex_builder` (il corpo LaTeX è ciò che finisce nel PDF): se è
+    presente del LaTeX scritto si analizza quello (ripulito in prosa), altrimenti
+    si ripiega sulla prosa generata. Così Mentore, Dashboard e storico progressi
+    funzionano anche sui progetti importati che hanno solo il LaTeX.
+    """
+    if (latex or "").strip():
+        return latex_to_text(latex)
+    return text or ""
+
+
 # ------------------------------------------------------------------ metriche
 def analyze(text: str) -> TextMetrics:
     text = (text or "").strip()

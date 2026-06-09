@@ -935,7 +935,11 @@ class MainWindow(QMainWindow):
         if not ch:
             return
         from .mentor_dialog import MentorDialog
-        MentorDialog(self, self.engine, self.book, ch.text).exec()
+        from ..core import analysis
+        # la revisione lavora sul risultato finale: il LaTeX scritto se presente,
+        # altrimenti la prosa generata (vedi analysis.readable_text)
+        MentorDialog(self, self.engine, self.book,
+                     analysis.readable_text(ch.text, ch.latex)).exec()
 
     def _open_metrics(self):
         self._commit_current_editors()

@@ -33,10 +33,13 @@ Test GUI headless: prefissa **sempre** `QT_QPA_PLATFORM=offscreen`. Attenzione: 
 `QMessageBox`/`QInputDialog` modali **bloccano** in headless — non chiamarli nei test.
 
 ## Configurazione (env)
-- `BOOKFORGE_PROVIDER` (anthropic|openai|google, default anthropic)
+- `BOOKFORGE_PROVIDER` (anthropic|openai|google|ollama|lmstudio, default anthropic)
 - `BOOKFORGE_MODEL` (default `claude-opus-4-8`)
 - `BOOKFORGE_API_KEY` (o `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GOOGLE_API_KEY`)
-- Senza chiave → modalità offline (`MockEngine`).
+- `BOOKFORGE_BASE_URL` — endpoint per i provider **locali** (Ollama/LM Studio).
+- Provider locali: `LocalEngine` parla via `urllib` con `/v1/chat/completions`
+  (nessuna chiave, nessuna dipendenza esterna). Eredita la pipeline da `DatapizzaEngine`.
+- Senza chiave (e provider non locale) → modalità offline (`MockEngine`).
 - In alternativa all'env: menu **⚙ Impostazioni** → salva provider/modello/chiavi (per-provider)
   e parametri in `~/.bookforge/settings.json` (`core/settings.py`; override path con `BOOKFORGE_CONFIG`).
 

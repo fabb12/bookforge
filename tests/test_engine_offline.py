@@ -4,7 +4,7 @@ import pytest
 from bookforge.agents.engine import (
     build_engine, EngineConfig, autodraft_book, autodraft_chapter,
     process_chapter, _parse_review, _parse_claims, _accepts_temperature,
-    GenerationCancelled, friendly_engine_error,
+    GenerationCancelled, friendly_engine_error, LocalEngine, list_local_models,
 )
 from bookforge.core.model import Book
 
@@ -118,6 +118,84 @@ def test_progress_callback_can_cancel_pipeline():
 
     with pytest.raises(GenerationCancelled):
         process_chapter(eng, b, ch, progress=cancel)
+
+
+def test_friendly_error_server_locale_giu():
+    import urllib.error
+    msg = friendly_engine_error(urllib.error.URLError("Connection refused"))
+    assert "locale" in msg.lower() and "11434" in msg
+
+
+def test_build_engine_locale_senza_chiave_e_reale():
+    # un provider locale non richiede chiave: il motore reale deve attivarsi
+    eng, real, msg = build_engine(
+        EngineConfig(provider="ollama", model="llama3.1:8b"))
+    assert real is True
+    assert isinstance(eng, LocalEngine)
+    assert "Ollama" in msg
+
+
+def test_build_engine_locale_senza_modello_ripiega_offline():
+    eng, real, _ = build_engine(EngineConfig(provider="lmstudio", model=""))
+    assert real is False  # senza modello non si può procedere → MockEngine
+
+
+def test_local_engine_usa_endpoint_predefinito():
+    eng = LocalEngine(EngineConfig(provider="ollama", model="llama3.1:8b"))
+    assert eng._base_url == "http://localhost:11434/v1"
+    eng2 = LocalEngine(EngineConfig(provider="lmstudio", model="x"))
+    assert eng2._base_url == "http://localhost:1234/v1"
+
+
+@pytest.fixture
+def _local_server():
+    """Server fittizio OpenAI-compatibile per testare LocalEngine senza rete reale."""
+    import json, threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):  # silenzia il log del server di test
+            pass
+
+        def _send(self, body):
+            data = json.dumps(body).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):  # /models
+            self._send({"data": [{"id": "llama3.1:8b"}, {"id": "mistral"}]})
+
+        def do_POST(self):  # /chat/completions: fa l'eco dell'ultimo messaggio
+            n = int(self.headers.get("Content-Length", 0))
+            req = json.loads(self.rfile.read(n))
+            last = req["messages"][-1]["content"]
+            self._send({"choices": [{"message": {"content": "ECO " + last}}]})
+
+    srv = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}/v1"
+    srv.shutdown()
+
+
+def test_local_engine_pipeline_contro_server_fittizio(_local_server):
+    eng = LocalEngine(EngineConfig(
+        provider="ollama", model="llama3.1:8b", base_url=_local_server))
+    b = Book(title="T", topic="x")
+    ch = b.add_chapter("Cap"); ch.raw_concepts = "Un concetto."
+    out = eng.write(b, ch)
+    assert out.startswith("ECO ") and "Cap" in out
+    # la pipeline completa gira interamente sull'endpoint locale
+    autodraft_chapter(eng, b, ch)
+    assert ch.text.strip() and ch.latex.strip() and ch.summary.strip()
+
+
+def test_list_local_models(_local_server):
+    assert list_local_models(_local_server) == ["llama3.1:8b", "mistral"]
+    # server irraggiungibile → lista vuota, nessuna eccezione
+    assert list_local_models("http://127.0.0.1:1/v1", timeout=0.5) == []
 
 
 def test_parse_helpers():

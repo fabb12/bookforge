@@ -13,7 +13,9 @@ from PyQt6.QtWidgets import (
 
 from ..core.model import Project, Chapter
 from ..core import compiler
-from ..core.settings import AppSettings
+from ..core.settings import (
+    AppSettings, PROVIDERS, PROVIDER_LABELS, is_local, default_base_url,
+)
 from ..agents.engine import EngineConfig, build_engine
 from .worker import GenerateWorker
 from .model_selector import ModelSelector
@@ -376,24 +378,35 @@ class MainWindow(QMainWindow):
         tabs.addTab(style, "Stile")
 
         # --- motore AI ---
-        eng = QWidget(); eform = QFormLayout(eng)
-        self.e_provider = QComboBox(); self.e_provider.addItems(["openai", "anthropic", "google"])
-        self.e_provider.setCurrentText(self.engine_config.provider)
+        eng = QWidget(); self.e_form = eform = QFormLayout(eng)
+        self.e_provider = QComboBox()
+        for p in PROVIDERS:
+            self.e_provider.addItem(PROVIDER_LABELS.get(p, p), p)
         # modello: selettore chiaro con nomi leggibili e voce «Altro» (ModelSelector)
         self.e_model = ModelSelector()
-        self.e_provider.currentTextChanged.connect(self._on_engine_provider_changed)
+        self.e_provider.currentIndexChanged.connect(
+            lambda *_: self._on_engine_provider_changed(self.e_provider.currentData()))
+        idx = self.e_provider.findData(self.engine_config.provider)
+        if idx >= 0:
+            self.e_provider.setCurrentIndex(idx)
         self._reload_engine_models(self.engine_config.provider, self.engine_config.model)
+        # endpoint per i motori locali (Ollama/LM Studio)
+        self.e_base_url = QLineEdit(
+            self.engine_config.base_url or default_base_url(self.engine_config.provider))
+        self.e_base_url.setPlaceholderText("http://localhost:11434/v1")
         self.e_key = QLineEdit(self.engine_config.api_key)
         self.e_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.e_key.setPlaceholderText("Lascia vuoto per modalità offline (test)")
         apply_btn = QPushButton("Applica motore"); apply_btn.clicked.connect(self._apply_engine)
         eform.addRow("Provider", self.e_provider)
         eform.addRow("Modello", self.e_model)
+        eform.addRow("Endpoint locale", self.e_base_url)
         eform.addRow("API key", self.e_key)
         eform.addRow(apply_btn)
         self.e_status = QLabel(""); self.e_status.setObjectName("Subtitle")
         self.e_status.setWordWrap(True)
         eform.addRow(self.e_status)
+        self._update_engine_provider_rows(self.engine_config.provider)
         tabs.addTab(eng, "Motore")
 
         lay.addWidget(tabs)
@@ -642,14 +655,25 @@ class MainWindow(QMainWindow):
 
     def _on_engine_provider_changed(self, provider: str):
         self._reload_engine_models(provider)
+        self._update_engine_provider_rows(provider)
+
+    def _update_engine_provider_rows(self, provider: str):
+        """Mostra l'endpoint per i motori locali e la chiave per quelli cloud."""
+        local = is_local(provider)
+        if local and not self.e_base_url.text().strip():
+            self.e_base_url.setText(default_base_url(provider))
+        self.e_form.setRowVisible(self.e_base_url, local)
+        self.e_form.setRowVisible(self.e_key, not local)
 
     def _apply_engine(self):
-        provider = self.e_provider.currentText()
+        provider = self.e_provider.currentData()
         model = self.e_model.current_model()
         key = self.e_key.text().strip()
+        base_url = self.e_base_url.text().strip()
+        local = is_local(provider)
         # mantiene i parametri di campionamento dalle impostazioni globali
         self.engine_config = EngineConfig(
-            provider=provider, model=model, api_key=key,
+            provider=provider, model=model, api_key=key, base_url=base_url,
             temperature=self.app_settings.temperature,
             max_tokens=self.app_settings.max_tokens,
         )
@@ -661,11 +685,15 @@ class MainWindow(QMainWindow):
         self.app_settings.model = model
         if key:
             self.app_settings.set_api_key(provider, key)
+        if local:
+            self.app_settings.set_base_url(provider, base_url)
         try:
             self.app_settings.save()
         except Exception:  # noqa: BLE001 - non bloccante
             pass
-        self._warn_if_offline(key)
+        # per i motori locali non serve una chiave: l'avviso «offline» non si applica
+        if not local:
+            self._warn_if_offline(key)
 
     def _warn_if_offline(self, key: str):
         """Se è stata fornita una chiave ma il motore reale non parte, spiega perché.
@@ -1132,12 +1160,18 @@ class MainWindow(QMainWindow):
         self.engine_config = EngineConfig.from_settings(self.app_settings)
         self.engine, self.engine_real, msg = build_engine(self.engine_config)
         # tiene allineata la scheda «Motore» del pannello destro
-        self.e_provider.setCurrentText(self.engine_config.provider)
+        idx = self.e_provider.findData(self.engine_config.provider)
+        if idx >= 0:
+            self.e_provider.setCurrentIndex(idx)
         self._reload_engine_models(self.engine_config.provider, self.engine_config.model)
         self.e_key.setText(self.engine_config.api_key)
+        self.e_base_url.setText(self.engine_config.base_url
+                                or default_base_url(self.engine_config.provider))
+        self._update_engine_provider_rows(self.engine_config.provider)
         self.e_status.setText(msg)
         self.statusBar().showMessage(msg, 5000)
-        self._warn_if_offline(self.engine_config.api_key)
+        if not self.engine_config.is_local:
+            self._warn_if_offline(self.engine_config.api_key)
 
     def _open_about(self):
         from .about_dialog import AboutDialog

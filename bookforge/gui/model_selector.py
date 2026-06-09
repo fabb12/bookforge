@@ -45,10 +45,19 @@ class ModelSelector(QWidget):
         Se `selected` non è tra i modelli noti, attiva la voce «Altro» e vi
         precompila l'identificativo, così nessuna scelta va persa.
         """
+        self.set_models(models_for(provider), selected,
+                        recommended=DEFAULT_MODELS.get(provider, ""))
+
+    def set_models(self, models: list[str], selected: str = "",
+                   recommended: str = "") -> None:
+        """Ripopola l'elenco con `models` (utile per i modelli rilevati a runtime).
+
+        Mantiene sempre in coda la voce «Altro» per gli id non in elenco; se
+        `selected` non compare, attiva «Altro» precompilato così nulla va perso.
+        """
         self.combo.blockSignals(True)
         self.combo.clear()
-        recommended = DEFAULT_MODELS.get(provider, "")
-        for mid in models_for(provider):
+        for mid in models:
             label = model_label(mid)
             if mid == recommended:
                 label = f"★ {label}  (consigliato)"

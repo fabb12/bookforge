@@ -55,10 +55,27 @@ L'app cerca la API key da variabili d'ambiente o dal pannello **Motore** nell'in
 Il provider consigliato è **Anthropic (Claude Opus 4.8)** per la qualità di scrittura:
 
 ```bash
-export BOOKFORGE_PROVIDER=anthropic   # anthropic | openai | google
+export BOOKFORGE_PROVIDER=anthropic   # anthropic | openai | google | ollama | lmstudio
 export BOOKFORGE_MODEL=claude-opus-4-8
 export BOOKFORGE_API_KEY=sk-ant-...
 ```
+
+#### Modelli locali (Ollama / LM Studio)
+Puoi scrivere **senza rete né chiave API** usando un modello che gira sul tuo
+computer. BookForge parla con l'API OpenAI-compatibile (`/v1/chat/completions`)
+esposta da [Ollama](https://ollama.com) e [LM Studio](https://lmstudio.ai):
+
+```bash
+export BOOKFORGE_PROVIDER=ollama                 # oppure: lmstudio
+export BOOKFORGE_MODEL=llama3.1:8b               # un modello che hai scaricato
+export BOOKFORGE_BASE_URL=http://localhost:11434/v1   # LM Studio: :1234/v1
+```
+
+Oppure dal menu **⚙ Impostazioni** (o dal pannello **Motore**): scegli il
+provider locale, indica l'endpoint e premi **🔄 Rileva** per elencare i modelli
+disponibili sul server. Non serve alcuna chiave; assicurati solo che Ollama o
+LM Studio sia in esecuzione. Endpoint predefiniti: Ollama `http://localhost:11434/v1`,
+LM Studio `http://localhost:1234/v1`.
 
 Per la **generazione di immagini** (Google Imagen / Gemini):
 

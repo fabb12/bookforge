@@ -13,13 +13,53 @@ import dataclasses
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
-# provider supportati e modello predefinito di ciascuno
-PROVIDERS = ("anthropic", "openai", "google")
+# provider supportati e modello predefinito di ciascuno.
+# Oltre ai provider cloud (anthropic/openai/google) sono supportati i motori
+# LOCALI: Ollama e LM Studio espongono un'API OpenAI-compatibile su localhost,
+# così si può scrivere senza rete né chiave (vedi `LOCAL_PROVIDERS`).
+PROVIDERS = ("anthropic", "openai", "google", "ollama", "lmstudio")
+
+# provider che girano in locale: non richiedono una chiave API, ma un endpoint
+# (`base_url`) verso il server OpenAI-compatibile in ascolto sulla macchina.
+LOCAL_PROVIDERS = ("ollama", "lmstudio")
+
+# etichette leggibili dei provider (per la UI)
+PROVIDER_LABELS = {
+    "anthropic": "Anthropic (Claude)",
+    "openai": "OpenAI (GPT)",
+    "google": "Google (Gemini)",
+    "ollama": "Ollama (locale)",
+    "lmstudio": "LM Studio (locale)",
+}
+
 DEFAULT_MODELS = {
     "anthropic": "claude-opus-4-8",
     "openai": "gpt-4o-mini",
     "google": "gemini-2.5-pro",
+    "ollama": "llama3.1:8b",
+    "lmstudio": "local-model",
 }
+
+# endpoint predefinito dei provider locali (API OpenAI-compatibile).
+DEFAULT_BASE_URLS = {
+    "ollama": "http://localhost:11434/v1",
+    "lmstudio": "http://localhost:1234/v1",
+}
+
+
+def is_local(provider: str) -> bool:
+    """Indica se il provider è un motore locale (Ollama/LM Studio)."""
+    return (provider or "").strip().lower() in LOCAL_PROVIDERS
+
+
+def provider_label(provider: str) -> str:
+    """Nome leggibile di un provider; ripiega sull'id se non in mappa."""
+    return PROVIDER_LABELS.get(provider, provider)
+
+
+def default_base_url(provider: str) -> str:
+    """Endpoint predefinito per un provider locale (vuoto se non locale)."""
+    return DEFAULT_BASE_URLS.get((provider or "").strip().lower(), "")
 
 # modelli attualmente disponibili per provider, mostrati nel menu a tendina delle
 # impostazioni. La lista non è esaustiva: il campo resta editabile, così l'utente
@@ -42,6 +82,20 @@ AVAILABLE_MODELS = {
         "gemini-2.5-pro",
         "gemini-2.5-flash",
     ],
+    # Per i provider locali l'elenco è solo indicativo: i modelli dipendono da
+    # ciò che l'utente ha scaricato/caricato. Il campo resta editabile e la GUI
+    # può rilevarli interrogando il server (vedi `agents.engine.list_local_models`).
+    "ollama": [
+        "llama3.1:8b",
+        "llama3.1:70b",
+        "qwen2.5:14b",
+        "mistral",
+        "gemma2",
+        "phi4",
+    ],
+    "lmstudio": [
+        "local-model",
+    ],
 }
 
 
@@ -61,6 +115,14 @@ MODEL_LABELS = {
     "o4-mini": "o4-mini — ragionamento veloce",
     "gemini-2.5-pro": "Gemini 2.5 Pro — qualità",
     "gemini-2.5-flash": "Gemini 2.5 Flash — veloce",
+    # modelli locali (etichette indicative)
+    "llama3.1:8b": "Llama 3.1 8B — locale, leggero",
+    "llama3.1:70b": "Llama 3.1 70B — locale, qualità (molta RAM)",
+    "qwen2.5:14b": "Qwen 2.5 14B — locale, equilibrato",
+    "mistral": "Mistral 7B — locale, leggero",
+    "gemma2": "Gemma 2 — locale",
+    "phi4": "Phi-4 — locale, compatto",
+    "local-model": "Modello caricato in LM Studio — locale",
 }
 
 
@@ -101,6 +163,7 @@ class AppSettings:
     provider: str = "anthropic"
     model: str = "claude-opus-4-8"
     api_keys: dict = field(default_factory=dict)   # provider -> chiave API
+    base_urls: dict = field(default_factory=dict)  # provider locale -> endpoint
     temperature: float = 0.7
     max_tokens: int = 0                            # 0 = lascia il default del provider
     recent_projects: list = field(default_factory=list)  # percorsi progetti recenti (più recente prima)
@@ -114,6 +177,23 @@ class AppSettings:
             self.api_keys[provider] = key
         else:
             self.api_keys.pop(provider, None)
+
+    def base_url_for(self, provider: str | None = None) -> str:
+        """Endpoint del provider locale: quello salvato o il predefinito.
+
+        Per i provider cloud restituisce stringa vuota (non hanno un endpoint
+        configurabile lato BookForge).
+        """
+        p = provider or self.provider
+        return self.base_urls.get(p) or default_base_url(p)
+
+    def set_base_url(self, provider: str, url: str) -> None:
+        url = (url or "").strip()
+        # memorizza solo se diverso dal predefinito, così l'elenco resta pulito
+        if url and url != default_base_url(provider):
+            self.base_urls[provider] = url
+        else:
+            self.base_urls.pop(provider, None)
 
     # ---------- progetti recenti ----------
     def add_recent_project(self, folder) -> None:
@@ -139,6 +219,8 @@ class AppSettings:
         data = {k: v for k, v in (d or {}).items() if k in known}
         if not isinstance(data.get("api_keys"), dict):
             data["api_keys"] = {}
+        if not isinstance(data.get("base_urls"), dict):
+            data["base_urls"] = {}
         if not isinstance(data.get("recent_projects"), list):
             data["recent_projects"] = []
         # rimappa eventuali modelli ritirati salvati in precedenza

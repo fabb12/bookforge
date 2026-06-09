@@ -11,12 +11,16 @@ fallback offline così l'app resta utilizzabile per provare l'interfaccia.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from typing import Callable
 
 from ..core.model import Book, Chapter
+from ..core.settings import LOCAL_PROVIDERS, default_base_url
 
 
 class GenerationCancelled(Exception):
@@ -80,6 +84,7 @@ class EngineConfig:
     provider: str = "anthropic"
     model: str = "claude-opus-4-8"
     api_key: str = ""
+    base_url: str = ""          # endpoint per i provider locali (Ollama/LM Studio)
     temperature: float = 0.7
     max_tokens: int = 0
 
@@ -94,6 +99,13 @@ class EngineConfig:
             self.provider = self.provider.strip().lower()
         if self.model:
             self.model = self.model.strip()
+        if self.base_url:
+            self.base_url = self.base_url.strip()
+
+    @property
+    def is_local(self) -> bool:
+        """Indica se la configurazione punta a un motore locale."""
+        return self.provider in LOCAL_PROVIDERS
 
     @staticmethod
     def from_env() -> "EngineConfig":
@@ -104,6 +116,7 @@ class EngineConfig:
                     or os.getenv("ANTHROPIC_API_KEY", "")
                     or os.getenv("OPENAI_API_KEY", "")
                     or os.getenv("GOOGLE_API_KEY", ""),
+            base_url=os.getenv("BOOKFORGE_BASE_URL", ""),
         )
 
     @staticmethod
@@ -113,11 +126,13 @@ class EngineConfig:
         La chiave del provider scelto ha la precedenza; se manca, si ripiega
         sulle variabili d'ambiente (così l'avvio resta comodo da terminale).
         """
+        # per i provider locali la chiave non serve: conta l'endpoint.
         key = settings.api_key_for() or EngineConfig.from_env().api_key
         return EngineConfig(
             provider=settings.provider,
             model=settings.model,
             api_key=key,
+            base_url=settings.base_url_for(),
             temperature=settings.temperature,
             max_tokens=settings.max_tokens,
         )
@@ -431,6 +446,101 @@ class DatapizzaEngine:
         return _strip_code_fences(a.run(task).text.strip())
 
 
+# ---------------------------------------------------------------- motori locali
+class _LocalResponse:
+    """Risposta minimale compatibile con quanto si aspetta `DatapizzaEngine`."""
+    __slots__ = ("text",)
+
+    def __init__(self, text: str):
+        self.text = text
+
+
+class _LocalAgent:
+    """Agente per endpoint OpenAI-compatibili (Ollama, LM Studio).
+
+    Replica l'unica interfaccia che la pipeline usa — `.run(task).text` — ma parla
+    con l'endpoint `/chat/completions` via `urllib` (libreria standard): nessuna
+    dipendenza esterna, così i modelli locali funzionano anche senza `datapizza`
+    installato. I server locali NON espongono la Responses API di OpenAI, quindi
+    qui si usa apposta il vecchio contratto `chat/completions` che entrambi servono.
+    """
+
+    def __init__(self, base_url: str, model: str, system_prompt: str,
+                 temperature: float | None = None, max_tokens: int = 0,
+                 timeout: float = 600.0):
+        self._url = base_url.rstrip("/") + "/chat/completions"
+        self._model = model
+        self._system = system_prompt
+        self._temperature = temperature
+        self._max_tokens = max_tokens
+        self._timeout = timeout
+
+    def run(self, task: str) -> _LocalResponse:
+        messages = []
+        if self._system:
+            messages.append({"role": "system", "content": self._system})
+        messages.append({"role": "user", "content": task})
+        payload: dict = {"model": self._model, "messages": messages, "stream": False}
+        if self._temperature is not None:
+            payload["temperature"] = self._temperature
+        if self._max_tokens:
+            payload["max_tokens"] = self._max_tokens
+        data = json.dumps(payload).encode("utf-8")
+        # l'header Authorization è ignorato dai server locali ma li tiene felici
+        req = urllib.request.Request(
+            self._url, data=data, method="POST",
+            headers={"Content-Type": "application/json",
+                     "Authorization": "Bearer local"})
+        with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        text = body["choices"][0]["message"].get("content") or ""
+        return _LocalResponse(text.strip())
+
+
+class LocalEngine(DatapizzaEngine):
+    """Motore per modelli locali (Ollama, LM Studio) via API OpenAI-compatibile.
+
+    Eredita l'intera pipeline di `DatapizzaEngine`: l'unica differenza è la fonte
+    delle risposte, fornita da `_LocalAgent` al posto degli agenti `datapizza`.
+    Così la parità dei metodi resta automatica (regola d'oro #5) e non serve
+    duplicare la logica di scrittura/coerenza/formattazione.
+    """
+
+    def __init__(self, config: EngineConfig):
+        # niente import di datapizza né client reale: si parla HTTP col server locale.
+        self.config = config
+        self._base_url = (config.base_url or default_base_url(config.provider)
+                          or "http://localhost:11434/v1")
+        if not (config.model or "").strip():
+            raise ValueError(
+                "Specifica il modello locale da usare (es. llama3.1:8b per Ollama).")
+
+    def _agent(self, name: str, system_prompt: str):
+        return _LocalAgent(self._base_url, self.config.model, system_prompt,
+                           temperature=self.config.temperature,
+                           max_tokens=self.config.max_tokens)
+
+
+def list_local_models(base_url: str, timeout: float = 3.0) -> list[str]:
+    """Interroga l'endpoint `/models` di un server locale OpenAI-compatibile.
+
+    Restituisce gli identificativi dei modelli disponibili, o una lista vuota se
+    il server non risponde: così la GUI può proporli senza farli digitare a mano,
+    senza però rompersi se Ollama/LM Studio non sono in esecuzione.
+    """
+    url = base_url.rstrip("/") + "/models"
+    try:
+        req = urllib.request.Request(url, headers={"Authorization": "Bearer local"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001 - server spento o irraggiungibile: nessun modello
+        return []
+    data = body.get("data") if isinstance(body, dict) else None
+    ids = [m.get("id") for m in (data or [])
+           if isinstance(m, dict) and m.get("id")]
+    return [i for i in ids if i]
+
+
 # ---------------------------------------------------------------- offline fallback
 class MockEngine:
     """Motore che non chiama nessun LLM: utile senza API key, per testare la GUI."""
@@ -568,7 +678,19 @@ _PROVIDER_PACKAGES = {
 
 def build_engine(config: EngineConfig, force_offline: bool = False):
     """Restituisce (engine, is_real, message)."""
-    if force_offline or not config.api_key:
+    if force_offline:
+        return MockEngine(), False, "Modalità offline forzata: testo simulato."
+    # provider locali (Ollama/LM Studio): non serve una chiave, serve l'endpoint.
+    if config.is_local:
+        try:
+            eng = LocalEngine(config)
+        except Exception as e:  # es. modello non specificato
+            return MockEngine(), False, f"Fallback offline ({e})."
+        nome = "Ollama" if config.provider == "ollama" else "LM Studio"
+        return eng, True, (f"Motore locale {nome} attivo "
+                           f"({eng._base_url}, modello {config.model}). "
+                           f"Assicurati che il server sia in esecuzione.")
+    if not config.api_key:
         return MockEngine(), False, "Modalità offline (nessuna API key): testo simulato."
     try:
         eng = DatapizzaEngine(config)
@@ -648,6 +770,15 @@ def friendly_engine_error(exc: Exception) -> str:
     """
     msg = str(exc)
     low = msg.lower()
+    if ("connection refused" in low or "failed to establish" in low
+            or "actively refused" in low or "max retries" in low
+            or "urlopen error" in low or "name or service not known" in low
+            or isinstance(exc, (urllib.error.URLError, ConnectionError))
+            and "401" not in low):
+        return ("Server locale non raggiungibile: avvia Ollama o LM Studio e "
+                "verifica l'endpoint in ⚙ Impostazioni (es. "
+                "http://localhost:11434/v1 per Ollama, "
+                "http://localhost:1234/v1 per LM Studio).")
     if ("401" in low or "authentication" in low or "invalid x-api-key" in low
             or "invalid api key" in low or "unauthorized" in low):
         return ("Chiave API non valida o assente: il provider ha rifiutato "

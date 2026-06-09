@@ -6,7 +6,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QFileDialog, QFormLayout, QGroupBox, QMessageBox, QWidget,
+    QFileDialog, QFormLayout, QGroupBox, QMessageBox, QWidget, QMenu,
 )
 
 from ..core.model import Project, Book
@@ -61,8 +61,30 @@ class StartupDialog(QDialog):
             btn = QPushButton(icon("book-open"), f"  {p.name}")
             btn.setToolTip(str(p))
             btn.clicked.connect(lambda _=False, fp=str(p): self._open_recent(fp))
+            btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            btn.customContextMenuRequested.connect(
+                lambda pos, b=btn, fp=str(p), parent=box: self._show_recent_menu(pos, b, fp, parent)
+            )
             lay.addWidget(btn)
         return box
+
+    def _show_recent_menu(self, pos, btn, folder: str, parent_box):
+        menu = QMenu(self)
+        remove_action = menu.addAction(icon("trash"), "Rimuovi dai recenti")
+        action = menu.exec(btn.mapToGlobal(pos))
+        if action == remove_action:
+            self._remove_recent(folder, btn, parent_box)
+
+    def _remove_recent(self, folder: str, btn, parent_box):
+        if folder in self.settings.recent_projects:
+            self.settings.recent_projects.remove(folder)
+            self.settings.save()
+
+        parent_box.layout().removeWidget(btn)
+        btn.deleteLater()
+
+        if parent_box.layout().count() == 0:
+            parent_box.hide()
 
     def _open_recent(self, folder: str):
         if not Project.is_project(folder):

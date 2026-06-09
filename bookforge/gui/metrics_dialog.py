@@ -66,9 +66,11 @@ class MetricsDialog(QDialog):
         rows = list(self.book.chapters)
         self.table.setRowCount(len(rows) + 1)
         for r, ch in enumerate(rows):
-            self._fill_row(r, ch.title, analysis.analyze(ch.text or "").to_dict())
-        # riga totale
-        full = "\n\n".join((c.text or "") for c in self.book.chapters)
+            txt = analysis.readable_text(ch.text, ch.latex)
+            self._fill_row(r, ch.title, analysis.analyze(txt).to_dict())
+        # riga totale (sul risultato finale di ogni capitolo)
+        full = "\n\n".join(
+            analysis.readable_text(c.text, c.latex) for c in self.book.chapters)
         self._fill_row(len(rows), "TUTTO IL LIBRO", analysis.analyze(full).to_dict(),
                        bold=True)
         self._show_delta()

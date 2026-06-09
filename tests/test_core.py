@@ -29,6 +29,28 @@ def test_flag_claims_detects_numbers_and_dates():
     assert flags and any("numer" in f.reason or "tempor" in f.reason for f in flags)
 
 
+def test_latex_to_text_strips_markup():
+    latex = (r"% commento da ignorare" "\n"
+             r"\section{Titolo}" "\n"
+             r"Il \textbf{concetto} chiave \cite{rossi2020} è "
+             r"\emph{centrale}\footnote{nota}. Costa il 10\% in meno." "\n"
+             r"\begin{itemize}\item primo \end{itemize}")
+    out = analysis.latex_to_text(latex)
+    assert "Titolo" in out and "concetto" in out and "centrale" in out
+    assert "10%" in out                      # \% diventa %
+    assert "\\" not in out and "{" not in out  # niente residui di markup
+    assert "rossi2020" not in out            # le citazioni spariscono
+    assert "commento" not in out
+
+
+def test_readable_text_prefers_latex():
+    # con LaTeX presente si analizza il risultato finale (ripulito)
+    assert analysis.readable_text("prosa", r"\textbf{finale}") == "finale"
+    # senza LaTeX si ripiega sulla prosa
+    assert analysis.readable_text("prosa", "") == "prosa"
+    assert analysis.readable_text("", "") == ""
+
+
 # --------------------------------------------------------------- structure
 def test_argument_map_parse_and_roundtrip():
     text = "TESI: t\nARGOMENTO: a1\nPROVA: p1\nOBIEZIONE: o1\nREPLICA: r1\nARGOMENTO: a2"

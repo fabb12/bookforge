@@ -19,6 +19,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Callable
 
+from ..core import image_gen
 from ..core.model import Book, Chapter
 from ..core.settings import LOCAL_PROVIDERS, default_base_url
 
@@ -246,6 +247,20 @@ IMAGE_PROMPT_PROMPT = (
     "a un modello text-to-image. Restituisci SOLO il prompt, senza virgolette."
 )
 
+# Le infografiche non illustrano una scena: organizzano *il contenuto* del testo.
+# Il prompt va quindi scritto in modo da estrarre i punti chiave e da imporre la
+# lingua delle scritte (deve coincidere con quella del libro).
+INFOGRAPHIC_PROMPT_PROMPT = (
+    "Sei un assistente che progetta infografiche. Dal testo dell'autore estrai i "
+    "concetti chiave, i dati, i passaggi o le relazioni e scrivi UN prompt in inglese "
+    "per un generatore di immagini che produca un'infografica DETTAGLIATA e FEDELE al "
+    "contenuto: sezioni etichettate, titoli, brevi didascalie, icone e, dove utile, "
+    "frecce o numeri di sequenza. Descrivi quali testi compaiono e dove. "
+    "VINCOLO IMPORTANTE: tutte le scritte, le etichette e i titoli dell'infografica "
+    "devono essere in {lingua} (riporta nel prompt il testo esatto in {lingua}). "
+    "Restituisci SOLO il prompt, senza virgolette."
+)
+
 # --- modalità mentore: feedback, non riscrittura ---
 REVIEW_PROMPT = (
     "Sei un mentore di scrittura, non un ghostwriter. Ricevi un brano e fornisci "
@@ -402,11 +417,21 @@ class DatapizzaEngine:
         a = self._agent("captioner", CAPTION_PROMPT.format(lingua=lingua))
         return _strip_code_fences(a.run(subject).text.strip())
 
-    def image_prompt(self, request: str, book: Book | None = None) -> str:
-        a = self._agent("imageprompter", IMAGE_PROMPT_PROMPT)
+    def image_prompt(self, request: str, book: Book | None = None,
+                     style: str = "") -> str:
+        lingua = book.style.language if book is not None else "italiano"
+        # Le infografiche (e gli stili con testo) richiedono un prompt costruito sul
+        # contenuto e nella lingua del libro: scelgo il system prompt di conseguenza.
+        if image_gen.style_needs_text(style):
+            sys = INFOGRAPHIC_PROMPT_PROMPT.format(lingua=lingua)
+        else:
+            sys = IMAGE_PROMPT_PROMPT
+        a = self._agent("imageprompter", sys)
         ctx = (f"Contesto: libro «{book.title}» — argomento «{book.topic or book.title}».\n\n"
                if book is not None else "")
-        return _strip_code_fences(a.run(ctx + "Richiesta: " + request).text.strip())
+        base = _strip_code_fences(a.run(ctx + "Richiesta: " + request).text.strip())
+        # Rinforzo deterministico: stile + vincolo di lingua per le scritte.
+        return image_gen.compose_prompt(base, style, lingua)
 
     # -- modalità mentore (feedback, non riscrittura) ---------------------
     def review_notes(self, text: str, book: Book | None = None) -> list[dict]:
@@ -615,8 +640,14 @@ class MockEngine:
         s = subject.strip().rstrip(".")
         return (s[:120] + "…") if len(s) > 120 else (s or "Figura")
 
-    def image_prompt(self, request: str, book: Book | None = None) -> str:
-        return f"{request.strip()} — detailed illustration, book figure, clean style"
+    def image_prompt(self, request: str, book: Book | None = None,
+                     style: str = "") -> str:
+        lingua = book.style.language if book is not None else "italiano"
+        if image_gen.style_needs_text(style):
+            base = f"detailed infographic about: {request.strip()}, labeled sections"
+        else:
+            base = f"{request.strip()} — detailed illustration, book figure, clean style"
+        return image_gen.compose_prompt(base, style, lingua)
 
     # -- modalità mentore (offline: euristiche deterministiche) -----------
     def review_notes(self, text: str, book: Book | None = None) -> list[dict]:

@@ -101,18 +101,48 @@ def style_descriptor(style: str) -> str:
     return style.strip()
 
 
-def compose_prompt(base: str, style: str = "") -> str:
-    """Combina il prompt base con il descrittore dello stile scelto.
+# Stili che mostrano *testo* sull'immagine (etichette, titoli, didascalie): per
+# questi conta in quale lingua il modello scrive le parole — deve coincidere con
+# la lingua del libro (un'infografica di un libro italiano va scritta in italiano).
+_TEXT_STYLES = {"Infografica", "Lavagna"}
 
-    Funzione pura: il prompt dell'AI resta il soggetto, lo stile viene appeso in
-    coda così da indirizzare in modo deterministico il modello text-to-image.
+# nomi di lingua in inglese, perché il prompt al modello è in inglese
+_LANG_EN = {
+    "italiano": "Italian", "inglese": "English", "english": "English",
+    "francese": "French", "spagnolo": "Spanish", "tedesco": "German",
+    "portoghese": "Portuguese",
+}
+
+
+def style_needs_text(style: str) -> bool:
+    """Indica se lo stile produce testo sull'immagine (infografica, lavagna, …)."""
+    return style in _TEXT_STYLES
+
+
+def language_in_english(language: str) -> str:
+    """Nome della lingua in inglese, da inserire nel prompt (default: invariato)."""
+    lang = (language or "").strip()
+    return _LANG_EN.get(lang.lower(), lang)
+
+
+def compose_prompt(base: str, style: str = "", language: str = "") -> str:
+    """Combina il prompt base con lo stile scelto e, se serve, la lingua del testo.
+
+    Funzione pura: il prompt dell'AI resta il soggetto/contenuto, lo stile viene
+    appeso in coda così da indirizzare in modo deterministico il modello. Per gli
+    stili che disegnano parole (infografica, lavagna) aggiunge il vincolo di lingua
+    così le etichette risultano nella lingua del libro.
     """
+    parts: list[str] = []
     base = (base or "").strip()
+    if base:
+        parts.append(base.rstrip(" .,;:"))
     desc = style_descriptor(style)
-    if not desc:
-        return base
-    sep = "" if base.endswith((".", ",", ";", ":")) else "."
-    return f"{base}{sep} {desc}".strip()
+    if desc:
+        parts.append(desc.rstrip(" .,;:"))
+    if style_needs_text(style) and language.strip():
+        parts.append(f"all text and labels written in {language_in_english(language)}")
+    return ". ".join(parts).strip()
 
 
 @dataclass

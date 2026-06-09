@@ -156,18 +156,9 @@ class MainWindow(QMainWindow):
         auto_btn.setMenu(amenu)
         tb.addWidget(auto_btn)
 
-        # menu sezioni speciali del libro (premessa, prologo, epilogo, quarta, copertina)
+        # menu sezioni speciali del libro (copertina)
         sec_btn = tool_button("Sezioni libro", "book")
         smenu = QMenu(sec_btn)
-        smenu.addAction(icon("sparkles"), "Genera premessa (AI)",
-                        lambda: self._gen_section("premessa"))
-        smenu.addAction(icon("sparkles"), "Genera prologo (AI)",
-                        lambda: self._gen_section("prologo"))
-        smenu.addAction(icon("sparkles"), "Genera epilogo / fine libro (AI)",
-                        lambda: self._gen_section("epilogo"))
-        smenu.addAction(icon("sparkles"), "Genera quarta di copertina (AI)",
-                        lambda: self._gen_section("quarta"))
-        smenu.addSeparator()
         smenu.addAction(icon("image"), "Genera immagine di copertina (AI)…",
                         self._gen_cover_image)
         sec_btn.setMenu(smenu)
@@ -289,11 +280,6 @@ class MainWindow(QMainWindow):
         self.m_author = QLineEdit(); self.m_year = QLineEdit()
         self.m_topic = QLineEdit()
         self.m_abstract = QPlainTextEdit(); self.m_abstract.setMaximumHeight(80)
-        self.m_premise = QPlainTextEdit(); self.m_premise.setMaximumHeight(70)
-        self.m_preface = QPlainTextEdit(); self.m_preface.setMaximumHeight(70)
-        self.m_prologue = QPlainTextEdit(); self.m_prologue.setMaximumHeight(70)
-        self.m_epilogue = QPlainTextEdit(); self.m_epilogue.setMaximumHeight(70)
-        self.m_back = QPlainTextEdit(); self.m_back.setMaximumHeight(70)
         # metadati editoriali (usati dal layout "editoriale")
         self.m_subtitle_b = QLineEdit()
         self.m_subtitle_b.setPlaceholderText("Seconda riga di sottotitolo (frontespizio editoriale)")
@@ -317,11 +303,6 @@ class MainWindow(QMainWindow):
         mform.addRow("Argomento", self.m_topic)
         mform.addRow("Abstract", self.m_abstract)
         mform.addRow("Copertina (img)", cover_wrap)
-        mform.addRow("Premessa", self.m_premise)
-        mform.addRow("Prefazione", self.m_preface)
-        mform.addRow("Prologo", self.m_prologue)
-        mform.addRow("Epilogo", self.m_epilogue)
-        mform.addRow("Quarta cop. (classico)", self.m_back)
         # --- sezione metadati editoriali ---
         mform.addRow("Sottotitolo 2", self.m_subtitle_b)
         mform.addRow("Editore", self.m_publisher)
@@ -498,11 +479,6 @@ class MainWindow(QMainWindow):
         self.m_author.setText(b.author); self.m_year.setText(b.year)
         self.m_topic.setText(b.topic); self.m_abstract.setPlainText(b.abstract)
         self.m_cover.setText(b.cover_image)
-        self.m_premise.setPlainText(b.premise)
-        self.m_preface.setPlainText(b.preface)
-        self.m_prologue.setPlainText(b.prologue)
-        self.m_epilogue.setPlainText(b.epilogue)
-        self.m_back.setPlainText(b.back_cover)
         self.m_subtitle_b.setText(b.subtitle_b)
         self.m_publisher.setText(b.publisher); self.m_isbn.setText(b.isbn)
         self.m_price.setText(b.price)
@@ -523,12 +499,8 @@ class MainWindow(QMainWindow):
         b.title = self.m_title.text().strip() or b.title
         b.subtitle = self.m_subtitle.text(); b.author = self.m_author.text().strip()
         b.year = self.m_year.text().strip(); b.topic = self.m_topic.text().strip()
-        b.abstract = self.m_abstract.toPlainText(); b.preface = self.m_preface.toPlainText()
+        b.abstract = self.m_abstract.toPlainText()
         b.cover_image = self.m_cover.text().strip()
-        b.premise = self.m_premise.toPlainText()
-        b.prologue = self.m_prologue.toPlainText()
-        b.epilogue = self.m_epilogue.toPlainText()
-        b.back_cover = self.m_back.toPlainText()
         b.subtitle_b = self.m_subtitle_b.text()
         b.publisher = self.m_publisher.text().strip(); b.isbn = self.m_isbn.text().strip()
         b.price = self.m_price.text().strip()
@@ -576,23 +548,6 @@ class MainWindow(QMainWindow):
         if key:
             cfg.api_key = key
         return cfg
-
-    def _gen_section(self, kind: str):
-        """Genera con l'AI una sezione speciale (premessa/prologo/epilogo/quarta)."""
-        self._commit_book_meta()
-        targets = {"premessa": self.m_premise, "prologo": self.m_prologue,
-                   "epilogo": self.m_epilogue, "quarta": self.m_back}
-        labels = {"premessa": "Premessa", "prologo": "Prologo",
-                  "epilogo": "Epilogo / fine libro", "quarta": "Quarta di copertina"}
-        w = targets[kind]
-
-        def accept(text):
-            w.setPlainText(text)
-            self._commit_book_meta()
-
-        self._run_chapter_ai(labels[kind],
-                             lambda: self.engine.book_section(self.book, kind),
-                             accept, original=w.toPlainText())
 
     def _choose_cover_image(self):
         """Seleziona un'immagine di copertina; se è fuori dal progetto la copia in images/."""

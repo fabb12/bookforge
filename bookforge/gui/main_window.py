@@ -261,13 +261,6 @@ class MainWindow(QMainWindow):
         shortcut_find.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         shortcut_find.activated.connect(self._toggle_latex_search)
 
-    def _toggle_latex_search(self):
-        if self.latex_search_replace.isVisible():
-            self.latex_search_replace.hide()
-            self.latex_edit.setFocus()
-        else:
-            self.latex_search_replace.show()
-
         # evidenziazione sintassi LaTeX sulla scheda 3
         from .latex_highlighter import attach_latex_highlighter
         self._latex_hl = attach_latex_highlighter(self.latex_edit)
@@ -316,6 +309,14 @@ class MainWindow(QMainWindow):
         self.progress_label.setObjectName("Subtitle")
         lay.addWidget(self.progress_label)
         return w
+
+    def _toggle_latex_search(self):
+        """Mostra/nasconde il pannello di ricerca e sostituzione sulla scheda LaTeX."""
+        if self.latex_search_replace.isVisible():
+            self.latex_search_replace.hide()
+            self.latex_edit.setFocus()
+        else:
+            self.latex_search_replace.show()
 
     def _right_panel(self) -> QWidget:
         w = QWidget()

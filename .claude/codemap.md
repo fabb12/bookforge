@@ -14,7 +14,7 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
 |------|---------|----------------|
 | `model.py` | Modello dati + persistenza | `Book`, `Chapter`, `BookStyle`, `Project`; `Project.save/load/is_project`; `Book.add_chapter/move_chapter/neighbors/to_dict/from_dict` |
 | `latex_builder.py` | Genera il documento LaTeX completo | `build_latex(book)`, `escape_latex(s)`, `PREAMBLE`, `COVER`; layout editoriale (`style.layout == "editoriale"`): frontespizio TikZ, pagina copyright, quarta strutturata via `EDITORIAL_*` + `_editorial_*` (usa i campi `publisher`/`isbn`/`price`/`subtitle_b`/`back_quote*`/`back_blurb`) |
-| `compiler.py` | Compila/apre PDF e TeXstudio | `compile_pdf`, `compile_tex`, `open_pdf`, `open_pdf_path`, `open_in_texstudio`, `find_main_tex`, `write_tex`, `find_latex_tool` (cerca latexmk/pdflatex nel PATH e nelle posizioni MiKTeX/TeX Live) |
+| `compiler.py` | Compila/apre PDF e TeXstudio | `compile_pdf`, `compile_tex`, `open_pdf`, `open_pdf_path`, `open_in_texstudio`, `find_main_tex`, `write_tex`, `find_latex_tool` (cerca latexmk/pdflatex nel PATH e nelle posizioni MiKTeX/TeX Live), `extract_latex_errors(log)` (riassunto compatto degli errori `!`/`l.NN` per l'AI) |
 | `diagram.py` | Snippet figure + render diagrammi | `tikz_figure`, `image_figure`, `render_mermaid`, `render_graphviz`, `strip_fences` |
 | `docx_formatter.py` | Sistema file .docx (Word) | `format_docx(src,dst,rules)`, `DocxFormatRules`, `FormatReport` |
 | `image_gen.py` | Generazione immagini raster (Google Imagen/Gemini, Ideogram) | `generate_image`, `image_available`, `ImageGenConfig` |
@@ -33,7 +33,7 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
   - `EngineConfig` (+`from_env`), `build_engine(config, force_offline=False) -> (engine, is_real, msg)`.
   - `writer_prompt(book)` costruisce il system prompt dallo stile (`style_prompt` lo sovrascrive).
   - `DatapizzaEngine` (reale via `datapizza-ai`) e `MockEngine` (offline). **Stessa interfaccia**:
-    `write, coherence, format_latex, summarize, proofread, edit_text, outline, transitions,
+    `write, coherence, format_latex, fix_latex, summarize, proofread, edit_text, outline, transitions,
     bridge, generate_diagram, caption, image_prompt, review_notes, socratic_questions,
     claim_notes, argument_map, book_section` (premessa/prologo/epilogo/quarta).
   - `GenerationCancelled`: eccezione di interruzione cooperativa (i worker la sollevano
@@ -49,7 +49,9 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
 - `main_window.py` — `MainWindow`: lista capitoli, schede (Concetti/Testo/LaTeX/Riassunto),
   pannello Stile, toolbar. Hub che apre tutti i dialog e avvia i worker.
 - Dialog: `mentor_dialog`, `metrics_dialog`, `argument_dialog`, `biblio_dialog`,
-  `versions_dialog`, `docx_dialog`, `word_pdf_dialog` (Word→LaTeX→PDF), `settings_dialog` (API/LLM).
+  `versions_dialog`, `docx_dialog`, `word_pdf_dialog` (Word→LaTeX→PDF), `settings_dialog` (API/LLM),
+  `latex_log_dialog` (`LatexLogDialog`: finestra non modale col log di compilazione, errori
+  evidenziati, pulsante «Correggi con AI» → `engine.fix_latex` con anteprima).
 - Menu della finestra: «🛠 Strumenti» (converti progetto LaTeX → BookForge, Word→LaTeX→PDF,
   formatta .docx) e «⚙ Impostazioni» (API e modelli LLM).
 - Supporto: `ai_menu` (menu 🤖 a tasto destro), `ai_preview` (Accetta/Rifiuta/Rigenera),

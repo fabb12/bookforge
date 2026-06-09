@@ -46,6 +46,46 @@ DEFAULT_BASE_URLS = {
     "lmstudio": "http://localhost:1234/v1",
 }
 
+# provider per la GENERAZIONE IMMAGINI (capacità separata dal motore di testo).
+# Google riusa la chiave del provider «google»; Ideogram ha una propria chiave.
+IMAGE_PROVIDERS = ("google", "ideogram")
+IMAGE_PROVIDER_LABELS = {
+    "google": "Google (Imagen / Gemini)",
+    "ideogram": "Ideogram (ideogram.ai)",
+}
+DEFAULT_IMAGE_MODELS = {
+    "google": "imagen-3.0-generate-002",
+    "ideogram": "V_2",
+}
+# modelli immagine noti per provider (campo editabile: l'elenco non è esaustivo)
+AVAILABLE_IMAGE_MODELS = {
+    "google": [
+        "imagen-3.0-generate-002",
+        "gemini-2.5-flash-image",
+    ],
+    "ideogram": [
+        "V_2",
+        "V_2_TURBO",
+        "V_1",
+        "V_1_TURBO",
+    ],
+}
+
+
+def image_provider_label(provider: str) -> str:
+    """Nome leggibile di un provider immagini; ripiega sull'id se non in mappa."""
+    return IMAGE_PROVIDER_LABELS.get(provider, provider)
+
+
+def default_image_model(provider: str) -> str:
+    """Modello immagine predefinito per un provider (vuoto se sconosciuto)."""
+    return DEFAULT_IMAGE_MODELS.get((provider or "").strip().lower(), "")
+
+
+def image_models_for(provider: str) -> list[str]:
+    """Elenco dei modelli immagine noti per un provider (vuoto se sconosciuto)."""
+    return list(AVAILABLE_IMAGE_MODELS.get(provider, []))
+
 
 def is_local(provider: str) -> bool:
     """Indica se il provider è un motore locale (Ollama/LM Studio)."""
@@ -167,10 +207,19 @@ class AppSettings:
     temperature: float = 0.7
     max_tokens: int = 0                            # 0 = lascia il default del provider
     recent_projects: list = field(default_factory=list)  # percorsi progetti recenti (più recente prima)
+    image_provider: str = "google"                 # provider per la generazione immagini
+    image_model: str = ""                          # modello immagine (vuoto = default del provider)
 
     # ---------- accesso comodo ----------
     def api_key_for(self, provider: str | None = None) -> str:
         return self.api_keys.get(provider or self.provider, "")
+
+    def image_model_for(self, provider: str | None = None) -> str:
+        """Modello immagine salvato per il provider, o il suo predefinito."""
+        p = provider or self.image_provider
+        if self.image_model and p == self.image_provider:
+            return self.image_model
+        return default_image_model(p)
 
     def set_api_key(self, provider: str, key: str) -> None:
         if key:

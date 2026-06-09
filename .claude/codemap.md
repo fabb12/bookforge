@@ -17,7 +17,7 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
 | `compiler.py` | Compila/apre PDF e TeXstudio | `compile_pdf`, `compile_tex`, `open_pdf`, `open_pdf_path`, `open_in_texstudio`, `find_main_tex`, `write_tex`, `find_latex_tool` (cerca latexmk/pdflatex nel PATH e nelle posizioni MiKTeX/TeX Live) |
 | `diagram.py` | Snippet figure + render diagrammi | `tikz_figure`, `image_figure`, `render_mermaid`, `render_graphviz`, `strip_fences` |
 | `docx_formatter.py` | Sistema file .docx (Word) | `format_docx(src,dst,rules)`, `DocxFormatRules`, `FormatReport` |
-| `image_gen.py` | Generazione immagini raster | `generate_image`, `image_available`, `ImageGenConfig` |
+| `image_gen.py` | Generazione immagini raster (Google Imagen/Gemini, Ideogram) | `generate_image`, `image_available`, `ImageGenConfig` |
 | `analysis.py` | Metriche + note di stile + claim | `analyze`, `heuristic_notes`, `flag_claims`, `gulpease_label`, `TextMetrics`, `Note`, `ClaimFlag` |
 | `structure.py` | Mappa dell'argomentazione | `ArgumentMap`, `Argument`, `parse_ai_map`; `to_dict/from_dict/to_ai_format/to_concepts/to_outline` |
 | `biblio.py` | Bibliografia BibTeX | `BibEntry`, `parse_bibtex`, `load_bib`, `save_bib`, `suggest_key`, `cite_command` |

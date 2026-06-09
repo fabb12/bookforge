@@ -77,11 +77,19 @@ disponibili sul server. Non serve alcuna chiave; assicurati solo che Ollama o
 LM Studio sia in esecuzione. Endpoint predefiniti: Ollama `http://localhost:11434/v1`,
 LM Studio `http://localhost:1234/v1`.
 
-Per la **generazione di immagini** (Google Imagen / Gemini):
+Per la **generazione di immagini** puoi scegliere il provider in
+**⚙ Impostazioni → Generazione immagini** (oppure via variabili d'ambiente):
 
 ```bash
+# Google (Imagen / Gemini)
+export BOOKFORGE_IMAGE_PROVIDER=google
 export GOOGLE_API_KEY=...             # oppure BOOKFORGE_IMAGE_API_KEY
 export BOOKFORGE_IMAGE_MODEL=imagen-3.0-generate-002
+
+# Ideogram (ideogram.ai) — nessuna libreria da installare
+export BOOKFORGE_IMAGE_PROVIDER=ideogram
+export IDEOGRAM_API_KEY=...           # oppure BOOKFORGE_IMAGE_API_KEY
+export BOOKFORGE_IMAGE_MODEL=V_2      # V_2 | V_2_TURBO | V_1 | V_1_TURBO
 ```
 
 Senza API key l'app parte in **modalità offline**: genera testo simulato, utile per

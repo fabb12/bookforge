@@ -324,6 +324,70 @@ def extract_latex_errors(log: str, max_chars: int = 2500) -> str:
     return out
 
 
+def error_line_numbers(log: str) -> list[int]:
+    """Numeri di riga segnalati da TeX nel log (marcatori `l.NN`), in ordine e unici.
+
+    pdflatex stampa la riga incriminata come `l.177 \\pagestyle{...}`: questi
+    numeri permettono di isolare nel sorgente solo le zone in errore, invece di
+    mandare l'intero documento all'LLM.
+    """
+    out: list[int] = []
+    seen: set[int] = set()
+    for m in re.finditer(r"(?m)^l\.(\d+)", log):
+        n = int(m.group(1))
+        if n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out
+
+
+def _runaway_probes(log: str) -> list[str]:
+    """Frammenti di testo «in chiaro» dagli errori «Runaway argument?».
+
+    Quando un argomento non viene chiuso (tipico: un `%` non scappato che
+    commenta la graffa di chiusura) TeX non dà un numero di riga ma stampa
+    l'inizio dell'argomento. Si estrae la sequenza più lunga di sole lettere/
+    cifre/spazi, usabile per ritrovare la riga nel sorgente.
+    """
+    probes: list[str] = []
+    for m in re.finditer(r"Runaway argument\?[^\n]*\n?\s*\{?([^\n]*)", log):
+        runs = re.findall(r"[0-9A-Za-zÀ-ÿ ]{12,}", m.group(1))
+        if runs:
+            probes.append(max(runs, key=len).strip()[:80])
+    return probes
+
+
+def error_regions(source: str, log: str, context: int = 6) -> list[tuple[int, int]]:
+    """Zone del sorgente (indici riga, half-open) attorno agli errori del log.
+
+    Per ogni errore individua la riga (dai marcatori `l.NN` o ritrovando il
+    testo di un «Runaway argument»), allarga di `context` righe per dare contesto
+    all'LLM e fonde le finestre che si sovrappongono. Lista vuota se non riesce a
+    localizzare nulla. Gli indici sono 0-based su `source.splitlines()`.
+    """
+    lines = source.splitlines()
+    n = len(lines)
+    centers: set[int] = set()
+    for num in error_line_numbers(log):
+        if 1 <= num <= n:
+            centers.add(num - 1)
+    for probe in _runaway_probes(log):
+        pos = source.find(probe)
+        if pos >= 0:
+            centers.add(source.count("\n", 0, pos))
+    if not centers:
+        return []
+    windows = sorted((max(0, c - context), min(n, c + context + 1))
+                     for c in centers)
+    merged: list[tuple[int, int]] = []
+    for s, e in windows:
+        if merged and s <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+        else:
+            merged.append((s, e))
+    return merged
+
+
 def open_pdf(project: Project) -> tuple[bool, str]:
     pdf = project.folder / (project.tex_path.stem + ".pdf")
     return open_pdf_path(pdf)

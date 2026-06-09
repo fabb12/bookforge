@@ -291,6 +291,43 @@ def test_mock_engine_fix_latex_escapes_special_chars():
     assert again.count(r"\&") == 1
 
 
+def test_error_line_numbers_from_log():
+    log = ("! Undefined control sequence.\nl.177 \\pagestyle{mainmatter}\n"
+           "blah\n! Undefined control sequence.\nl.214 \\color{moderngray}\n"
+           "l.177 ripetuto\n")
+    assert compiler.error_line_numbers(log) == [177, 214]
+
+
+def test_error_regions_localizes_only_error_zones():
+    # sorgente di 300 righe; gli errori sono a riga 177 e 214 (1-based)
+    src_lines = [f"riga {i}" for i in range(1, 301)]
+    src_lines[176] = "\\pagestyle{mainmatter}"   # riga 177
+    src_lines[213] = "\\color{moderngray} testo"  # riga 214
+    source = "\n".join(src_lines)
+    log = "l.177 \\pagestyle{mainmatter}\nl.214 \\color{moderngray}"
+    regions = compiler.error_regions(source, log, context=6)
+    # due finestre distinte, ciascuna ~13 righe, lontane dai bordi
+    assert len(regions) == 2
+    (s1, e1), (s2, e2) = regions
+    assert s1 <= 176 < e1 and s2 <= 213 < e2
+    # copre solo una piccola frazione del documento, non tutto
+    covered = sum(e - s for s, e in regions)
+    assert covered < 30
+
+
+def test_error_regions_locates_runaway_argument_by_text():
+    source = ("\\chapter{Uno}\n"
+              "\\caption{Il cervello umano è un paradosso metabolico che consuma il 20% del corpo}\n"
+              "altro testo\n")
+    log = ("Runaway argument?\n"
+           "{Il cervello umano è un paradosso metabolico che consuma il 20\\label \\ETC.\n"
+           "! File ended while scanning use of \\caption@xdblarg.")
+    regions = compiler.error_regions(source, log, context=1)
+    assert regions, "deve localizzare la riga del runaway dal testo"
+    s, e = regions[0]
+    assert s <= 1 < e  # la caption è alla riga indice 1
+
+
 def test_parse_latex_fix_separates_summary_and_source():
     from bookforge.agents.engine import _parse_latex_fix
     out = ("MODIFICHE:\n- Scappato il carattere %\n- Bilanciate le graffe\n"
@@ -303,6 +340,18 @@ def test_parse_latex_fix_separates_summary_and_source():
     src2, sum2 = _parse_latex_fix("\\documentclass{book}")
     assert src2 == "\\documentclass{book}"
     assert sum2 == ""
+    # accetta anche il marcatore FRAMMENTO (correzione localizzata)
+    src3, sum3 = _parse_latex_fix("MODIFICHE:\n- x\nFRAMMENTO:\nciao mondo")
+    assert src3 == "ciao mondo"
+    assert "x" in sum3
+
+
+def test_mock_engine_fix_latex_snippet_matches_signature():
+    from bookforge.agents.engine import MockEngine
+    eng = MockEngine()
+    fixed, summary = eng.fix_latex_snippet("a & b con x_1", errors="l.5")
+    assert r"a \& b" in fixed and r"x\_1" in fixed
+    assert summary
 
 
 def test_needs_bibtex_detects_citations(tmp_path):

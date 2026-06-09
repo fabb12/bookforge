@@ -14,7 +14,7 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
 |------|---------|----------------|
 | `model.py` | Modello dati + persistenza | `Book`, `Chapter`, `BookStyle`, `Project`; `Project.save/load/is_project`; `Book.add_chapter/move_chapter/neighbors/to_dict/from_dict` |
 | `latex_builder.py` | Genera il documento LaTeX completo | `build_latex(book)`, `escape_latex(s)`, `PREAMBLE`, `COVER`; layout editoriale (`style.layout == "editoriale"`): frontespizio TikZ, pagina copyright, quarta strutturata via `EDITORIAL_*` + `_editorial_*` (usa i campi `publisher`/`isbn`/`price`/`subtitle_b`/`back_quote*`/`back_blurb`) |
-| `compiler.py` | Compila/apre PDF e TeXstudio | `compile_pdf`, `compile_tex`, `open_pdf`, `open_pdf_path`, `open_in_texstudio`, `find_main_tex`, `write_tex`, `find_latex_tool` (cerca latexmk/pdflatex nel PATH e nelle posizioni MiKTeX/TeX Live), `extract_latex_errors(log)` (riassunto compatto degli errori `!`/`l.NN` per l'AI) |
+| `compiler.py` | Compila/apre PDF e TeXstudio | `compile_pdf`, `compile_tex`, `open_pdf`, `open_pdf_path`, `open_in_texstudio`, `find_main_tex`, `write_tex`, `find_latex_tool` (cerca latexmk/pdflatex nel PATH e nelle posizioni MiKTeX/TeX Live), `extract_latex_errors(log)` (riassunto compatto degli errori), `error_line_numbers(log)`/`error_regions(source, log)` (isolano le sole zone in errore per non mandare l'intero .tex all'LLM) |
 | `diagram.py` | Snippet figure + render diagrammi | `tikz_figure`, `image_figure`, `render_mermaid`, `render_graphviz`, `strip_fences` |
 | `docx_formatter.py` | Sistema file .docx (Word) | `format_docx(src,dst,rules)`, `DocxFormatRules`, `FormatReport` |
 | `image_gen.py` | Generazione immagini raster (Google Imagen/Gemini, Ideogram) | `generate_image`, `image_available`, `ImageGenConfig` |
@@ -53,8 +53,9 @@ aggiungono/spostano moduli. (~5.500 righe Python, PyQt6.)
   `latex_log_dialog` (`LatexLogDialog`: finestra non modale col log di compilazione, errori
   evidenziati, pulsante «Correggi con AI»), `latex_fix_dialog` (`LatexFixDialog`: anteprima
   della correzione con riepilogo + diff colorato). Flusso in `main_window._run_latex_fix`:
-  `engine.fix_latex(source, errors) -> (sorgente, riepilogo)` → anteprima → ricompila, in
-  ciclo automatico fino a `_MAX_FIX_ATTEMPTS` finché il PDF non è generato.
+  isola le zone in errore (`compiler.error_regions`) e manda all'AI SOLO quei frammenti
+  (`engine.fix_latex_snippet`, fallback `fix_latex` per documenti piccoli) → splicing →
+  anteprima → ricompila, in ciclo automatico fino a `_MAX_FIX_ATTEMPTS` finché il PDF non è generato.
 - Menu della finestra: «🛠 Strumenti» (converti progetto LaTeX → BookForge, Word→LaTeX→PDF,
   formatta .docx) e «⚙ Impostazioni» (API e modelli LLM).
 - Supporto: `ai_menu` (menu 🤖 a tasto destro), `ai_preview` (Accetta/Rifiuta/Rigenera),

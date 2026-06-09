@@ -256,14 +256,20 @@ class AiEditingController:
         style = opts.style_label
         count = opts.variants
         cfg = replace(cfg, aspect_ratio=opts.aspect_ratio)
-        self._run_image_generation(description, style, count, cfg, Path(base))
+        # L'immagine va inserita SOTTO il testo selezionato (la sua descrizione),
+        # senza sovrascriverlo: ricordiamo la fine della selezione come punto
+        # d'inserimento, così la prosa di partenza resta intatta.
+        insert_pos = self.w.textCursor().selectionEnd()
+        self._run_image_generation(description, style, count, cfg, Path(base), insert_pos)
 
     def _run_image_generation(self, description: str, style: str, count: int,
-                              cfg, base: Path):
+                              cfg, base: Path, insert_pos: int):
         """Genera le immagini, le mostra in anteprima e inserisce quella scelta.
 
         Tenuto separato dalla raccolta opzioni così che «Rigenera» possa rilanciare
         la stessa configurazione senza richiedere di nuovo all'utente le scelte.
+        `insert_pos` è la posizione (fine della selezione originale) dove va messa
+        l'immagine, così resta sotto il testo da cui è partito il prompt.
         """
         eng = self._engine_or_warn()
         if eng is None:
@@ -292,12 +298,18 @@ class AiEditingController:
                 self._cleanup_unused(paths, keep=chosen)
                 rel = f"images/{chosen.name}"
                 snippet = diagram.image_figure(rel, dlg.caption_text)
+                # posiziona il cursore alla fine del testo selezionato e inserisce
+                # lì sotto, senza toccare la selezione di partenza.
+                cur = self.w.textCursor()
+                pos = min(insert_pos, len(self.w.toPlainText()))
+                cur.setPosition(pos)
+                self.w.setTextCursor(cur)
                 self._insert_at_cursor("\n" + snippet + "\n")
             else:
                 # rifiuto o rigenera: scarta tutte le immagini prodotte
                 self._cleanup_unused(paths, keep=None)
                 if dlg.action == "regenerate":
-                    self._run_image_generation(description, style, count, cfg, base)
+                    self._run_image_generation(description, style, count, cfg, base, insert_pos)
 
         self._start("Genero l'immagine…", fn, on_done)
 

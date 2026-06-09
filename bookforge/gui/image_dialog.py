@@ -13,10 +13,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtGui import QIcon, QPixmap, QGuiApplication
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QPushButton,
     QPlainTextEdit, QLineEdit, QComboBox, QSpinBox, QListWidget, QListWidgetItem,
+    QScrollArea,
 )
 
 from ..core.image_gen import IMAGE_STYLES
@@ -24,6 +25,46 @@ from .icons import icon, app_icon
 
 # proporzioni offerte (chiavi accettate da ImageGenConfig.aspect_ratio)
 _ASPECTS = ["1:1", "3:4", "4:3", "16:9", "9:16"]
+
+
+class ImageZoomDialog(QDialog):
+    """Mostra una singola immagine a grandezza piena, in una vista scorribile.
+
+    Aperta dal doppio click su una miniatura dell'anteprima: serve per ispezionare
+    il dettaglio prima di scegliere quale variante inserire.
+    """
+
+    def __init__(self, parent, path: Path):
+        super().__init__(parent)
+        self.setWindowTitle(path.name)
+        self.setWindowIcon(app_icon())
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+
+        pix = QPixmap(str(path))
+        # non superare lo spazio disponibile sullo schermo: se l'immagine è
+        # enorme la rimpiccioliamo mantenendo le proporzioni.
+        screen = QGuiApplication.primaryScreen()
+        if screen is not None and not pix.isNull():
+            avail = screen.availableGeometry()
+            max_w, max_h = int(avail.width() * 0.9), int(avail.height() * 0.9)
+            if pix.width() > max_w or pix.height() > max_h:
+                pix = pix.scaled(max_w, max_h, Qt.AspectRatioMode.KeepAspectRatio,
+                                 Qt.TransformationMode.SmoothTransformation)
+
+        label = QLabel()
+        label.setPixmap(pix)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        scroll = QScrollArea()
+        scroll.setWidget(label)
+        scroll.setWidgetResizable(True)
+        scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(scroll)
+
+        self.resize(min(pix.width() + 40, 1200) if not pix.isNull() else 800,
+                    min(pix.height() + 40, 900) if not pix.isNull() else 600)
 
 
 class ImageOptionsDialog(QDialog):
@@ -105,8 +146,8 @@ class ImagePreviewDialog(QDialog):
         self.caption_text = caption
 
         lay = QVBoxLayout(self)
-        hint = ("Seleziona l'immagine da inserire."
-                if len(paths) > 1 else "Immagine generata.")
+        hint = ("Seleziona l'immagine da inserire (doppio click per ingrandirla)."
+                if len(paths) > 1 else "Immagine generata (doppio click per ingrandirla).")
         lbl = QLabel(hint)
         lbl.setObjectName("SectionLabel")
         lay.addWidget(lbl)
@@ -127,6 +168,7 @@ class ImagePreviewDialog(QDialog):
         if paths:
             self.gallery.setCurrentRow(0)
         self.gallery.currentItemChanged.connect(self._on_select)
+        self.gallery.itemDoubleClicked.connect(self._open_large)
         lay.addWidget(self.gallery, 1)
 
         lay.addWidget(QLabel("Didascalia (modificabile)"))
@@ -151,6 +193,14 @@ class ImagePreviewDialog(QDialog):
     def _on_select(self, current, _previous=None):
         if current is not None:
             self.selected_path = current.data(Qt.ItemDataRole.UserRole)
+
+    def _open_large(self, item):
+        """Doppio click su una miniatura: apre l'immagine a grandezza piena."""
+        if item is None:
+            return
+        path = item.data(Qt.ItemDataRole.UserRole)
+        if path is not None:
+            ImageZoomDialog(self, path).exec()
 
     def _accept(self):
         self.action = "accept"

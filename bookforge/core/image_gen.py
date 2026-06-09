@@ -51,6 +51,18 @@ _IDEOGRAM_ASPECT = {
     "9:16": "ASPECT_9_16",
     "16:9": "ASPECT_16_9",
 }
+# Mappa gli stili di BookForge sui `style_type` nativi di Ideogram (supportati
+# dai modelli V_2*). Indirizzano il motore meglio del solo descrittore testuale:
+# senza questo Ideogram ripiega sul suo default «realistico», ignorando lo stile
+# chiesto (è il bug per cui un'infografica usciva fotorealistica). Gli stili non
+# elencati usano GENERAL, adatto alle rese illustrative/artistiche.
+_IDEOGRAM_STYLE_TYPE = {
+    "Fotorealistico": "REALISTIC",
+    "Render 3D": "RENDER_3D",
+    "Infografica": "DESIGN",
+    "Minimalista": "DESIGN",
+    "Fumetto": "ANIME",
+}
 
 
 def _default_model_for(provider: str) -> str:
@@ -259,26 +271,39 @@ def _gemini_image_bytes(resp) -> bytes | None:
     return None
 
 
-def _generate_ideogram(prompt: str, config: ImageGenConfig, out_path: Path) -> None:
+def _generate_ideogram(prompt: str, config: ImageGenConfig, out_path: Path,
+                       style: str = "") -> None:
     """Genera con Ideogram via API REST e salva il PNG su `out_path`.
 
     Usa solo la libreria standard (`urllib`): coerente con la filosofia offline
     del progetto, nessuna dipendenza aggiuntiva. La chiamata richiede rete e una
     chiave valida; ogni errore diventa un `RuntimeError` con messaggio leggibile.
+
+    Quando l'autore sceglie uno stile esplicito spegniamo «Magic Prompt»: la sua
+    riscrittura automatica del prompt ignorava lo stile (un'infografica usciva
+    fotorealistica). Sui modelli V_2 passiamo anche lo `style_type` nativo.
     """
     import json
     import urllib.request
     import urllib.error
 
     aspect = _IDEOGRAM_ASPECT.get(config.aspect_ratio, "ASPECT_4_3")
-    body = json.dumps({
-        "image_request": {
-            "prompt": prompt,
-            "aspect_ratio": aspect,
-            "model": config.model or _IDEOGRAM_DEFAULT_MODEL,
-            "magic_prompt_option": "AUTO",
-        }
-    }).encode("utf-8")
+    model = config.model or _IDEOGRAM_DEFAULT_MODEL
+    image_request: dict[str, object] = {
+        "prompt": prompt,
+        "aspect_ratio": aspect,
+        "model": model,
+    }
+    if style_descriptor(style):
+        # Stile esplicito: niente riscrittura automatica, così il prompt (con il
+        # descrittore di stile) viene rispettato alla lettera.
+        image_request["magic_prompt_option"] = "OFF"
+        if model.upper().startswith("V_2"):
+            image_request["style_type"] = _IDEOGRAM_STYLE_TYPE.get(style, "GENERAL")
+    else:
+        # Senza stile, lasciamo che Magic Prompt arricchisca il prompt.
+        image_request["magic_prompt_option"] = "AUTO"
+    body = json.dumps({"image_request": image_request}).encode("utf-8")
     req = urllib.request.Request(
         _IDEOGRAM_URL, data=body, method="POST",
         headers={"Api-Key": config.api_key, "Content-Type": "application/json"},
@@ -317,13 +342,18 @@ def _generate_ideogram(prompt: str, config: ImageGenConfig, out_path: Path) -> N
 
 
 def generate_image(prompt: str, out_path: str | Path,
-                   config: ImageGenConfig | None = None) -> Path:
+                   config: ImageGenConfig | None = None,
+                   style: str = "") -> Path:
     """Genera un'immagine dal `prompt` e la salva in `out_path` (PNG).
 
     Restituisce il percorso del file. Prova il modello configurato e, se non è
     disponibile (tipico 404 di Imagen su API key gratuita), ripiega sui modelli
     Gemini immagine. Solleva RuntimeError con un messaggio leggibile se la
     libreria/chiave mancano o tutti i tentativi falliscono.
+
+    `style` è l'etichetta di stile scelta dall'autore: serve a Ideogram per
+    impostare lo `style_type` nativo e spegnere Magic Prompt (Imagen/Gemini
+    ricevono già lo stile dentro il prompt e lo ignorano qui).
     """
     config = config or ImageGenConfig.from_env()
     ok, msg = image_available(config)
@@ -334,7 +364,7 @@ def generate_image(prompt: str, out_path: str | Path,
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     if config.provider == "ideogram":
-        _generate_ideogram(prompt, config, out_path)
+        _generate_ideogram(prompt, config, out_path, style)
         return out_path
 
     try:

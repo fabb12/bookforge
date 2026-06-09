@@ -5,6 +5,7 @@ from bookforge.core.settings import (
     AppSettings, AVAILABLE_MODELS, PROVIDERS, models_for, model_label,
     MODEL_LABELS, DEFAULT_MODELS, MAX_RECENT_PROJECTS,
     LOCAL_PROVIDERS, DEFAULT_BASE_URLS, is_local, default_base_url,
+    IMAGE_PROVIDERS, default_image_model, image_models_for,
 )
 from bookforge.agents.engine import EngineConfig
 
@@ -26,6 +27,27 @@ def test_from_dict_tollerante():
     s = AppSettings.from_dict({"provider": "google", "sconosciuto": 1, "api_keys": None})
     assert s.provider == "google"
     assert s.api_keys == {}
+
+
+def test_image_provider_roundtrip(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    s = AppSettings(image_provider="ideogram", image_model="V_2_TURBO")
+    s.set_api_key("ideogram", "ideo-key")
+    s.save(path)
+    loaded = AppSettings.load(path)
+    assert loaded.image_provider == "ideogram"
+    assert loaded.image_model == "V_2_TURBO"
+    assert loaded.image_model_for("ideogram") == "V_2_TURBO"
+    assert loaded.api_key_for("ideogram") == "ideo-key"
+
+
+def test_image_default_quando_assente():
+    # nessuna regressione: i default puntano a Google/Imagen
+    s = AppSettings()
+    assert s.image_provider == "google"
+    assert s.image_model_for() == default_image_model("google")
+    assert "ideogram" in IMAGE_PROVIDERS
+    assert "V_2" in image_models_for("ideogram")
 
 
 def test_load_assente_da_default(tmp_path: Path):

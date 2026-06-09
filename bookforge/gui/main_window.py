@@ -559,11 +559,17 @@ class MainWindow(QMainWindow):
 
     # ============================================================ sezioni speciali / copertina
     def _image_config(self):
-        """Config per la generazione immagini: chiave Google dalle Impostazioni
-        (o dalle variabili d'ambiente come fallback)."""
+        """Config per la generazione immagini: provider, modello e chiave dalle
+        Impostazioni (con le variabili d'ambiente come fallback).
+
+        Il provider immagini è indipendente dal motore di testo: può essere
+        «google» o «ideogram». La chiave è quella salvata per quel provider."""
         from ..core.image_gen import ImageGenConfig
         cfg = ImageGenConfig.from_env()
-        key = self.app_settings.api_key_for("google") or cfg.api_key
+        provider = (self.app_settings.image_provider or cfg.provider).strip().lower()
+        cfg.provider = provider
+        cfg.model = self.app_settings.image_model_for(provider) or cfg.model
+        key = self.app_settings.api_key_for(provider) or cfg.api_key
         if key:
             cfg.api_key = key
         return cfg

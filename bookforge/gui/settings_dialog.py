@@ -15,6 +15,8 @@ from PyQt6.QtCore import Qt
 from ..core.settings import (
     AppSettings, PROVIDERS, DEFAULT_MODELS, PROVIDER_LABELS, is_local,
     default_base_url,
+    IMAGE_PROVIDERS, IMAGE_PROVIDER_LABELS, default_image_model,
+    image_models_for,
 )
 from ..agents.engine import list_local_models
 from .model_selector import ModelSelector
@@ -39,6 +41,7 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(560)
         self._build_ui()
         self._load_provider(self.settings.provider)
+        self._load_image_provider(self.settings.image_provider or "google")
 
     def _build_ui(self):
         outer = QVBoxLayout(self)
@@ -96,6 +99,8 @@ class SettingsDialog(QDialog):
         form.addRow("Max token", self.max_tokens)
         outer.addWidget(box)
 
+        outer.addWidget(self._build_image_box())
+
         note = QLabel("Le impostazioni sono salvate in ~/.bookforge/settings.json. "
                       "La chiave API è memorizzata in chiaro su questo computer. "
                       "I motori locali non richiedono alcuna chiave.")
@@ -107,6 +112,76 @@ class SettingsDialog(QDialog):
         save = QPushButton("Salva"); save.setObjectName("Primary"); save.clicked.connect(self._save)
         btn_row.addWidget(cancel); btn_row.addWidget(save)
         outer.addLayout(btn_row)
+
+    def _build_image_box(self) -> QGroupBox:
+        """Riquadro per la generazione immagini (provider, modello, chiave).
+
+        Capacità separata dal motore di testo: si può usare Google (Imagen /
+        Gemini) o Ideogram. Google riusa la chiave del provider «google» qui
+        sopra; Ideogram ha una propria chiave."""
+        box = QGroupBox("Generazione immagini")
+        self.img_form = form = QFormLayout(box)
+
+        self.img_provider = QComboBox()
+        for p in IMAGE_PROVIDERS:
+            self.img_provider.addItem(IMAGE_PROVIDER_LABELS.get(p, p), p)
+        self.img_provider.currentIndexChanged.connect(
+            lambda *_: self._on_image_provider_changed(self.img_provider.currentData()))
+
+        # modello immagine: combo editabile con i modelli noti del provider
+        self.img_model = QComboBox(); self.img_model.setEditable(True)
+
+        # chiave Ideogram (Google riusa la chiave del provider «google»)
+        self.img_key = QLineEdit(); self.img_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.img_key.setPlaceholderText("Chiave Ideogram (IDEOGRAM_API_KEY)")
+        img_show = QPushButton("Mostra"); img_show.setCheckable(True)
+        img_show.toggled.connect(lambda on: self.img_key.setEchoMode(
+            QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password))
+        img_key_row = QHBoxLayout(); img_key_row.addWidget(self.img_key); img_key_row.addWidget(img_show)
+        self.img_key_wrap = QWidget(); self.img_key_wrap.setLayout(img_key_row)
+
+        self.img_key_note = QLabel("Google riusa la chiave del provider «Google» "
+                                   "configurata qui sopra.")
+        self.img_key_note.setObjectName("Subtitle"); self.img_key_note.setWordWrap(True)
+
+        form.addRow("Provider immagini", self.img_provider)
+        form.addRow("Modello immagini", self.img_model)
+        form.addRow("Chiave immagini", self.img_key_wrap)
+        form.addRow("", self.img_key_note)
+        return box
+
+    def _load_image_provider(self, provider: str):
+        """Popola modello/chiave per il provider immagini selezionato."""
+        self._current_image_provider = provider
+        self.img_provider.blockSignals(True)
+        idx = self.img_provider.findData(provider)
+        if idx >= 0:
+            self.img_provider.setCurrentIndex(idx)
+        self.img_provider.blockSignals(False)
+        # modello: quello salvato se è il provider attivo, altrimenti il default
+        if provider == self.settings.image_provider and self.settings.image_model:
+            target = self.settings.image_model
+        else:
+            target = default_image_model(provider)
+        self.img_model.clear()
+        self.img_model.addItems(image_models_for(provider))
+        self.img_model.setEditText(target)
+        # Ideogram ha una chiave propria; Google riusa la chiave del provider testo
+        ideogram = provider == "ideogram"
+        if ideogram:
+            self.img_key.setText(self._keys.get("ideogram", ""))
+        self.img_form.setRowVisible(self.img_key_wrap, ideogram)
+        self.img_form.setRowVisible(self.img_key_note, not ideogram)
+
+    def _on_image_provider_changed(self, provider: str):
+        # memorizza la chiave Ideogram del provider precedente prima di cambiare
+        self._stash_image_key()
+        self._load_image_provider(provider)
+
+    def _stash_image_key(self):
+        prev = getattr(self, "_current_image_provider", None)
+        if prev == "ideogram":
+            self._keys["ideogram"] = self.img_key.text().strip()
 
     # --------------------------------------------------------------- logica
     def _on_provider_changed(self, provider: str):
@@ -166,10 +241,16 @@ class SettingsDialog(QDialog):
 
     def _save(self):
         self._stash_current_key()
+        self._stash_image_key()
         provider = self.provider.currentData()
         self.settings.provider = provider
         self.settings.model = self.model.current_model() or DEFAULT_MODELS.get(
             provider, "")
+        # provider/modello per la generazione immagini
+        img_provider = self.img_provider.currentData()
+        self.settings.image_provider = img_provider
+        self.settings.image_model = (self.img_model.currentText().strip()
+                                     or default_image_model(img_provider))
         self.settings.api_keys = {p: k for p, k in self._keys.items() if k}
         # endpoint locali: conserva solo quelli diversi dal predefinito
         self.settings.base_urls = {}

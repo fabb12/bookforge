@@ -157,6 +157,50 @@ def test_generate_ideogram_scarica_e_salva(monkeypatch, tmp_path):
     assert calls == [image_gen._IDEOGRAM_URL, "https://img.example/out.png"]
 
 
+def test_generate_ideogram_stride_spegne_magic_prompt_e_imposta_style_type(
+        monkeypatch, tmp_path):
+    """Con uno stile esplicito: Magic Prompt OFF e `style_type` nativo (V_2)."""
+    captured = {}
+
+    def fake_urlopen(req, timeout=0):
+        url = getattr(req, "full_url", req)
+        if url == image_gen._IDEOGRAM_URL:
+            captured.update(json.loads(req.data.decode("utf-8"))["image_request"])
+            return _FakeResp(json.dumps(
+                {"data": [{"url": "https://img.example/out.png"}]}).encode("utf-8"))
+        return _FakeResp(b"PNGDATA")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    cfg = ImageGenConfig(provider="ideogram", model="V_2", api_key="k")
+    image_gen.generate_image("schema della fotosintesi", tmp_path / "f.png",
+                             cfg, style="Infografica")
+
+    assert captured["magic_prompt_option"] == "OFF"
+    assert captured["style_type"] == "DESIGN"
+
+
+def test_generate_ideogram_senza_stile_lascia_magic_prompt_auto(monkeypatch, tmp_path):
+    """Senza stile esplicito: Magic Prompt resta AUTO e niente `style_type`."""
+    captured = {}
+
+    def fake_urlopen(req, timeout=0):
+        url = getattr(req, "full_url", req)
+        if url == image_gen._IDEOGRAM_URL:
+            captured.update(json.loads(req.data.decode("utf-8"))["image_request"])
+            return _FakeResp(json.dumps(
+                {"data": [{"url": "https://img.example/out.png"}]}).encode("utf-8"))
+        return _FakeResp(b"PNGDATA")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    cfg = ImageGenConfig(provider="ideogram", model="V_2", api_key="k")
+    image_gen.generate_image("un faro al tramonto", tmp_path / "f.png", cfg)
+
+    assert captured["magic_prompt_option"] == "AUTO"
+    assert "style_type" not in captured
+
+
 def test_generate_ideogram_senza_immagini_solleva(monkeypatch, tmp_path):
     def fake_urlopen(req, timeout=0):
         return _FakeResp(json.dumps({"data": []}).encode("utf-8"))

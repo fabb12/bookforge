@@ -278,7 +278,7 @@ class AiEditingController:
             paths: list[Path] = []
             for _ in range(max(1, count)):
                 out = self._unique_path(base / "images", name)
-                image_gen.generate_image(prompt, out, cfg)
+                image_gen.generate_image(prompt, out, cfg, style)
                 paths.append(out)
             caption = eng.caption(description, book)
             return paths, caption

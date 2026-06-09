@@ -29,6 +29,9 @@ PREAMBLE = r"""\documentclass[%(font_size)s,%(paper)s]{%(doc_class)s}
 \usepackage{geometry}
 \geometry{margin=2.5cm}
 \usepackage{graphicx}
+%% Didascalie sistemate: corpo piccolo, etichetta in grassetto, centrate.
+\IfFileExists{caption.sty}{\usepackage{caption}%%
+\captionsetup{font=small,labelfont=bf,justification=centering}}{}
 \usepackage{titlesec}
 \usepackage{fancyhdr}
 \IfFileExists{emptypage.sty}{\usepackage{emptypage}}{}

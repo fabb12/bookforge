@@ -384,12 +384,6 @@ class MainWindow(QMainWindow):
             self.e_provider.addItem(PROVIDER_LABELS.get(p, p), p)
         # modello: selettore chiaro con nomi leggibili e voce «Altro» (ModelSelector)
         self.e_model = ModelSelector()
-        self.e_provider.currentIndexChanged.connect(
-            lambda *_: self._on_engine_provider_changed(self.e_provider.currentData()))
-        idx = self.e_provider.findData(self.engine_config.provider)
-        if idx >= 0:
-            self.e_provider.setCurrentIndex(idx)
-        self._reload_engine_models(self.engine_config.provider, self.engine_config.model)
         # endpoint per i motori locali (Ollama/LM Studio)
         self.e_base_url = QLineEdit(
             self.engine_config.base_url or default_base_url(self.engine_config.provider))
@@ -406,6 +400,15 @@ class MainWindow(QMainWindow):
         self.e_status = QLabel(""); self.e_status.setObjectName("Subtitle")
         self.e_status.setWordWrap(True)
         eform.addRow(self.e_status)
+        # collega il segnale e seleziona il provider salvato SOLO dopo aver creato
+        # tutti i widget: setCurrentIndex fa scattare l'handler, che legge
+        # e_base_url/e_key/e_model (vedi _update_engine_provider_rows).
+        self.e_provider.currentIndexChanged.connect(
+            lambda *_: self._on_engine_provider_changed(self.e_provider.currentData()))
+        idx = self.e_provider.findData(self.engine_config.provider)
+        if idx >= 0:
+            self.e_provider.setCurrentIndex(idx)
+        self._reload_engine_models(self.engine_config.provider, self.engine_config.model)
         self._update_engine_provider_rows(self.engine_config.provider)
         tabs.addTab(eng, "Motore")
 

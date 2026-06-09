@@ -152,18 +152,29 @@ def _wrap(body: str, color: str) -> str:
 
 def _render(svg: str, size: int) -> QPixmap | None:
     """Renderizza una stringa SVG in un QPixmap quadrato; None se non possibile."""
-    if not _HAS_SVG:
+    if not _HAS_SVG or size <= 0:
         return None
+    painter: QPainter | None = None
     try:
         renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
+        # Renderizzare un QSvgRenderer non valido può causare un crash nativo
+        # in alcune build di Qt: ci fermiamo prima, ripiegando su nessuna icona.
+        if not renderer.isValid():
+            return None
         pm = QPixmap(size, size)
+        if pm.isNull():
+            return None
         pm.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pm)
         renderer.render(painter, QRectF(0, 0, size, size))
-        painter.end()
         return pm
     except Exception:  # noqa: BLE001 - in caso di problemi: nessuna icona
         return None
+    finally:
+        # il painter va sempre chiuso, anche su errore, per non lasciare
+        # il QPixmap in uno stato che può far crashare il processo dopo.
+        if painter is not None and painter.isActive():
+            painter.end()
 
 
 @lru_cache(maxsize=None)

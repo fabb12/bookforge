@@ -272,8 +272,9 @@ class AiEditingController:
         name = re.sub(r"[^a-z0-9]+", "_", description.lower()).strip("_")[:30] or "immagine"
 
         def fn():
-            base_prompt = eng.image_prompt(description, book)
-            prompt = image_gen.compose_prompt(base_prompt, style)
+            # lo stile (e la lingua del libro, per le infografiche) è gestito
+            # dentro image_prompt: il prompt risultante è già completo.
+            prompt = eng.image_prompt(description, book, style)
             paths: list[Path] = []
             for _ in range(max(1, count)):
                 out = self._unique_path(base / "images", name)

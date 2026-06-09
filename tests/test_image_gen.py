@@ -54,14 +54,42 @@ def test_compose_prompt_stile_libero_usato_cosi_com_e():
 
 
 def test_compose_prompt_non_duplica_punteggiatura():
-    out = image_gen.compose_prompt("un faro,", "Infografica")
-    assert out.startswith("un faro,")        # nessun punto extra dopo la virgola
-    assert ",." not in out
+    # la punteggiatura finale del base viene normalizzata prima del join
+    out = image_gen.compose_prompt("un faro,", "Acquerello")
+    assert out.startswith("un faro. ")
+    assert ",." not in out and ".." not in out
 
 
 def test_image_styles_disegno_bambino_presente():
     assert "Disegno di un bambino" in image_gen.IMAGE_STYLES
     assert "crayon" in image_gen.IMAGE_STYLES["Disegno di un bambino"]
+
+
+def test_infografica_e_uno_stile_con_testo():
+    assert image_gen.style_needs_text("Infografica")
+    assert image_gen.style_needs_text("Lavagna")
+    assert not image_gen.style_needs_text("Acquerello")
+    assert not image_gen.style_needs_text("Predefinito (nessuno stile)")
+
+
+def test_compose_prompt_infografica_impone_lingua():
+    out = image_gen.compose_prompt("le fasi della fotosintesi",
+                                   "Infografica", language="italiano")
+    assert "infographic" in out
+    # la lingua del libro diventa la lingua delle scritte dell'infografica
+    assert "all text and labels written in Italian" in out
+
+
+def test_compose_prompt_lingua_ignorata_per_stili_senza_testo():
+    # l'acquerello non disegna parole: il vincolo di lingua non si applica
+    out = image_gen.compose_prompt("un gatto", "Acquerello", language="italiano")
+    assert "written in" not in out
+
+
+def test_language_in_english_mappa_o_lascia_invariato():
+    assert image_gen.language_in_english("italiano") == "Italian"
+    assert image_gen.language_in_english("inglese") == "English"
+    assert image_gen.language_in_english("Klingon") == "Klingon"
 
 
 # --------------------------------------------------------- from_env

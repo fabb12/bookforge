@@ -137,6 +137,13 @@ Dal menu 🤖 puoi generare:
   configurato).
 - **Didascalie** per figure.
 
+> **Infografiche → meglio un diagramma.** Per gli stili con scritte (Infografica,
+> Lavagna) i generatori di immagini raster disegnano le parole come forme: spesso
+> le etichette escono illeggibili e le frecce non corrispondono ai concetti. Se
+> scegli uno di questi stili, BookForge ti propone di usare il **generatore di
+> diagrammi** (TikZ/Mermaid): compone testo reale e collegamenti coerenti, ed è
+> vettoriale. Puoi comunque proseguire con l'immagine raster — la scelta resta tua.
+
 ## 10. Impaginazione e PDF
 
 - **📄 Esporta .tex** — genera `book.tex` completo (preambolo, copertina, capitoli).

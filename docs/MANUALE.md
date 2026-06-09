@@ -173,5 +173,4 @@ prepara l'aggiornamento dell'indice. Scegli il file di ingresso e quello di usci
 
 ---
 
-Buona scrittura. Ricorda: l'AI è qui per farti crescere e andare più veloce, ma il
-libro resta **tuo**.
+Buona scrittura. 

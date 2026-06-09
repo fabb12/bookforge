@@ -15,11 +15,11 @@ datapizza-ai>=0.0.2
 # Client del provider AI: installa quello che usi.
 # Consigliato: Anthropic (Claude Opus 4.8) per la scrittura assistita.
 datapizza-ai-clients-anthropic
-# datapizza-ai-clients-openai
-# datapizza-ai-clients-google
+datapizza-ai-clients-openai
+datapizza-ai-clients-google
 
 # Generazione di immagini (opzionale): Google Imagen / Gemini.
-# google-genai
+google-genai
 
 # ──────────────────────────────────────────────────────────────────────────
 # Strumenti di SISTEMA (NON installabili con pip — vanno installati a parte).

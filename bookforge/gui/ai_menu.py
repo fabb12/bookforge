@@ -6,6 +6,8 @@ QTextEdit e gestisce:
   • generazione di diagrammi come codice (TikZ) o immagine (Mermaid renderizzato);
   • generazione di immagini raster (Google/Ideogram) con scelta dello stile di
     disegno, varianti multiple e selezione dell'immagine prima dell'inserimento.
+    Per gli stili con scritte (infografica, lavagna) propone il generatore di
+    diagrammi, che rende testo leggibile e frecce coerenti.
 
 Ogni proposta passa dall'anteprima (Accetta/Rifiuta/Rigenera): l'AI non
 sovrascrive mai senza conferma.
@@ -228,6 +230,40 @@ class AiEditingController:
         return diagram.image_figure(rel, caption)
 
     # ------------------------------------------------------------------ immagini
+    def _suggest_diagram_instead(self, style: str) -> str:
+        """Propone il generatore di diagrammi per gli stili con scritte.
+
+        Un'infografica (o una lavagna) vive di etichette leggibili e frecce che
+        collegano i concetti giusti: cose che i generatori di immagini raster non
+        sanno fare in modo affidabile. Suggeriamo quindi il diagramma — che
+        compone testo reale e collegamenti coerenti — senza imporlo: l'autore può
+        sempre generare comunque l'immagine. Ritorna «diagram» | «image» | «cancel».
+        """
+        box = QMessageBox(self.parent)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Infografica: meglio un diagramma")
+        box.setText(f"Lo stile «{style}» ha bisogno di scritte leggibili e di "
+                    "frecce che colleghino davvero i concetti.")
+        box.setInformativeText(
+            "I generatori di immagini disegnano le parole come forme: spesso le "
+            "scritte escono illeggibili e le frecce non corrispondono alle "
+            "etichette. Il generatore di diagrammi (TikZ/Mermaid) compone testo "
+            "reale e collegamenti coerenti, ed è vettoriale.\n\n"
+            "Vuoi creare un diagramma invece di un'immagine?")
+        b_diag = box.addButton("Usa diagramma (consigliato)",
+                               QMessageBox.ButtonRole.AcceptRole)
+        b_img = box.addButton("Genera comunque immagine",
+                              QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("Annulla", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(b_diag)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is b_diag:
+            return "diagram"
+        if clicked is b_img:
+            return "image"
+        return "cancel"
+
     def generate_image(self):
         eng = self._engine_or_warn()
         if eng is None:
@@ -255,6 +291,20 @@ class AiEditingController:
         description = opts.description or desc
         style = opts.style_label
         count = opts.variants
+        # Gli stili con scritte (infografica, lavagna) hanno bisogno di testo
+        # ESATTO e di frecce che colleghino davvero i concetti: i modelli
+        # text-to-image disegnano le parole come forme e spesso escono
+        # illeggibili, con frecce scollegate dalle etichette. Per questi stili
+        # proponiamo il generatore di diagrammi (testo reale + collegamenti
+        # coerenti, per giunta vettoriale). L'autore resta libero di proseguire.
+        if image_gen.style_needs_text(style):
+            choice = self._suggest_diagram_instead(style)
+            if choice == "cancel":
+                return
+            if choice == "diagram":
+                self.generate_diagram()
+                return
+            # choice == "image": prosegue con la generazione raster
         cfg = replace(cfg, aspect_ratio=opts.aspect_ratio)
         # L'immagine va inserita SOTTO il testo selezionato (la sua descrizione),
         # senza sovrascriverlo: ricordiamo la fine della selezione come punto

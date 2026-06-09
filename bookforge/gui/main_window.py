@@ -150,6 +150,8 @@ class MainWindow(QMainWindow):
         menu.addAction(icon("arrow-right"), "Ponte col capitolo successivo",
                        lambda: self._chapter_bridge("next"))
         menu.addAction(icon("note"), "Rigenera riassunto", self._chapter_resummarize)
+        menu.addSeparator()
+        menu.addAction(icon("wrench"), "Sistema il LaTeX (AI)", self._chapter_fix_latex)
         chap_btn.setMenu(menu)
         tb.addWidget(chap_btn)
 
@@ -162,15 +164,6 @@ class MainWindow(QMainWindow):
         mmenu.addAction(icon("book"), "Bibliografia", self._open_biblio)
         mentor_btn.setMenu(mmenu)
         tb.addWidget(mentor_btn)
-
-        # menu autogenerazione (autopilota)
-        auto_btn = tool_button("Autogenera", "rocket")
-        amenu = QMenu(auto_btn)
-        amenu.addAction(icon("sparkles"), "Autogenera capitolo corrente", self._autogen_current)
-        amenu.addAction(icon("book"), "Autogenera capitoli vuoti", lambda: self._autogen_all(True))
-        amenu.addAction(icon("refresh"), "Rigenera TUTTI i capitoli", lambda: self._autogen_all(False))
-        auto_btn.setMenu(amenu)
-        tb.addWidget(auto_btn)
 
         # menu sezioni speciali del libro (copertina)
         sec_btn = tool_button("Sezioni libro", "book")
@@ -877,60 +870,68 @@ class MainWindow(QMainWindow):
                              lambda: self.engine.summarize(ch.text),
                              accept, original=ch.summary)
 
-    # ============================================================ autogenerazione (autopilota)
-    def _autogen_current(self):
-        if self.worker and self.worker.isRunning():
-            return
-        self._commit_current_editors(); self._commit_book_meta()
+    # ============================================================ sistemazione LaTeX del capitolo
+    def _chapter_fix_latex(self):
+        """Controlla e corregge il LaTeX del capitolo corrente, spiegando gli errori.
+
+        Manda all'AI il solo corpo LaTeX del capitolo (scheda «3 · LaTeX»): il
+        motore individua gli errori (caratteri non scappati, ambienti o graffe non
+        bilanciati, comandi malformati) e propone come correggerli. La proposta passa
+        dall'anteprima con riepilogo + diff; se accettata, sostituisce il LaTeX del
+        capitolo. Niente compilazione: lavora sul singolo capitolo, non sul libro.
+        """
+        self._commit_current_editors()
         ch = self._current_chapter()
         if not ch:
-            QMessageBox.information(self, "Autogenera", "Aggiungi prima un capitolo.")
             return
-        self._start_autogen(chapter=ch)
+        latex = self.latex_edit.toPlainText()
+        if not latex.strip():
+            QMessageBox.information(
+                self, "Sistema il LaTeX",
+                "Il capitolo non ha codice LaTeX da controllare (scheda «3 · LaTeX»).")
+            return
 
-    def _autogen_all(self, only_empty: bool):
-        if self.worker and self.worker.isRunning():
+        from .ai_worker import AiWorker
+        from .latex_fix_dialog import LatexFixDialog
+        if getattr(self, "_chap_fix_worker", None) and self._chap_fix_worker.isRunning():
             return
-        self._commit_current_editors(); self._commit_book_meta()
-        if not self.book.chapters:
-            QMessageBox.information(self, "Autogenera", "Aggiungi prima dei capitoli.")
-            return
-        n = sum(1 for c in self.book.chapters if (not only_empty or not c.text.strip()))
-        if n == 0:
-            QMessageBox.information(self, "Autogenera", "Nessun capitolo da generare.")
-            return
-        msg = (f"Autogenerare {n} capitoli vuoti?" if only_empty
-               else f"Rigenerare TUTTI i {n} capitoli? Il testo esistente sarà sostituito.")
-        if QMessageBox.question(self, "Autogenera", msg) != QMessageBox.StandardButton.Yes:
-            return
-        # sicurezza: salva una versione prima di una generazione massiva
-        try:
-            from ..core import versioning
-            versioning.save_version(self.project.folder, self.book, "pre-autogenera")
-        except Exception:  # noqa: BLE001
-            pass
-        self._start_autogen(chapter=None, only_empty=only_empty)
+        busy = QProgressDialog("Controllo il LaTeX del capitolo…", None, 0, 0, self)
+        busy.setWindowTitle("AI"); busy.setCancelButton(None)
+        busy.setMinimumDuration(0); busy.show()
 
-    def _start_autogen(self, chapter, only_empty: bool = True):
-        from .autogen_worker import AutogenWorker
-        self.progress.show()
-        self.progress_label.setText("Autopilota in corso…")
-        self.stop_btn.setEnabled(True)
-        self.worker = AutogenWorker(self.engine, self.book, chapter, only_empty)
-        self.worker.progress.connect(self.progress_label.setText)
-        self.worker.finished_ok.connect(self._on_autogen_done)
-        self.worker.failed.connect(self._on_failed)
-        self.worker.cancelled.connect(self._on_cancelled)
-        self.worker.start()
+        def done(result):
+            busy.close()
+            fixed, summary = result
+            fixed = str(fixed)
+            if not fixed.strip() or fixed.strip() == latex.strip():
+                QMessageBox.information(
+                    self, "Sistema il LaTeX",
+                    "Nessun errore LaTeX rilevato nel capitolo.\n\n"
+                    + (summary.strip() if summary and summary.strip() else ""))
+                return
+            dlg = LatexFixDialog(self, original=latex, proposed=fixed,
+                                 summary=summary or "(modifiche al LaTeX del capitolo)",
+                                 attempt=1, allow_regenerate=True,
+                                 accept_label=" Accetta")
+            dlg.exec()
+            if dlg.action == "accept":
+                self.latex_edit.setPlainText(dlg.result_text)
+                ch.latex = dlg.result_text
+                self.tabs.setCurrentIndex(2)
+                self._save(silent=True)
+                self.statusBar().showMessage("LaTeX del capitolo aggiornato.", 4000)
+            elif dlg.action == "regenerate":
+                self._chapter_fix_latex()
 
-    def _on_autogen_done(self, n: int):
-        self.progress.hide()
-        self.stop_btn.setEnabled(False)
-        self.progress_label.setText(f"Autogenerati {n} capitolo/i ✓")
-        self._on_chapter_selected(self.chapter_list.currentRow())
-        self._refresh_chapter_list()
-        self.tabs.setCurrentIndex(1)
-        self._save(silent=True)
+        def fail(err):
+            busy.close()
+            QMessageBox.critical(self, "Sistema il LaTeX", err)
+
+        self._chap_fix_worker = AiWorker(
+            lambda: self.engine.fix_chapter_latex(latex, self.book))
+        self._chap_fix_worker.done.connect(done)
+        self._chap_fix_worker.failed.connect(fail)
+        self._chap_fix_worker.start()
 
     # ============================================================ export / versioni
     def _export_markdown(self):
@@ -984,7 +985,97 @@ class MainWindow(QMainWindow):
         # la revisione lavora sul risultato finale: il LaTeX scritto se presente,
         # altrimenti la prosa generata (vedi analysis.readable_text)
         MentorDialog(self, self.engine, self.book,
-                     analysis.readable_text(ch.text, ch.latex)).exec()
+                     analysis.readable_text(ch.text, ch.latex),
+                     on_apply=self._apply_mentor_fix).exec()
+
+    # --- applicazione puntuale di un suggerimento del mentore --------------
+    def _locate_excerpt(self, excerpt: str):
+        """Localizza il passaggio citato dalla nota in uno degli editor del capitolo.
+
+        La citazione («DOVE» della revisione) può differire per spazi/maiuscole dal
+        testo reale: la cerca in modo tollerante (spazi flessibili, case-insensitive)
+        prima nella prosa, poi nel LaTeX, ed espande il match alla frase che lo
+        contiene. Ritorna `(editor, testo_completo, inizio, fine)` o `None`.
+        """
+        import re
+        token = (excerpt or "").strip(" «»\"'…")
+        words = [re.escape(w) for w in re.split(r"\s+", token) if w]
+        if len(token) < 3 or not words:
+            return None
+        pattern = r"\s+".join(words)
+        for editor in (self.text_edit, self.latex_edit):
+            full = editor.toPlainText()
+            m = re.search(pattern, full, re.IGNORECASE)
+            if not m:
+                continue
+            # espandi ai confini di frase attorno al match
+            seps = ".!?\n"
+            start = max((full.rfind(c, 0, m.start()) for c in seps), default=-1)
+            start = start + 1 if start >= 0 else 0
+            ends = [p for p in (full.find(c, m.end()) for c in seps) if p >= 0]
+            end = (min(ends) + 1) if ends else len(full)
+            return editor, full, start, end
+        return None
+
+    def _apply_mentor_fix(self, note: dict):
+        """Applica il suggerimento di una nota di revisione al punto indicato."""
+        suggestion = (note.get("suggestion") or "").strip()
+        excerpt = (note.get("excerpt") or "").strip(" «»\"'…")
+        if not suggestion:
+            QMessageBox.information(self, "Applica suggerimento",
+                                    "Questa nota non ha un suggerimento applicabile.")
+            return
+        loc = self._locate_excerpt(excerpt)
+        if not loc:
+            QMessageBox.information(
+                self, "Applica suggerimento",
+                "Non riesco a localizzare il passaggio nel capitolo (forse è stato "
+                "modificato). Applica il suggerimento a mano nel punto indicato.")
+            return
+        editor, full, start, end = loc
+        passage = full[start:end]
+        stripped = passage.strip()
+        lead = passage[:len(passage) - len(passage.lstrip())]
+        trail = passage[len(passage.rstrip()):]
+        instruction = ("Applica SOLO questo suggerimento di revisione, mantenendo "
+                       f"significato e lingua: {suggestion}")
+
+        from .ai_worker import AiWorker
+        from .ai_preview import AiPreviewDialog
+        if getattr(self, "_mentor_fix_worker", None) and self._mentor_fix_worker.isRunning():
+            return
+        busy = QProgressDialog("Applico il suggerimento al passaggio…", None, 0, 0, self)
+        busy.setWindowTitle("AI"); busy.setCancelButton(None)
+        busy.setMinimumDuration(0); busy.show()
+
+        def done(result):
+            busy.close()
+            proposed = str(result).strip()
+            if not proposed or proposed == stripped:
+                QMessageBox.information(self, "Applica suggerimento",
+                                       "Nessuna modifica proposta per questo passaggio.")
+                return
+            dlg = AiPreviewDialog(self, "AI — Applica suggerimento",
+                                  original=stripped, proposed=proposed)
+            dlg.exec()
+            if dlg.action == "accept":
+                new_full = full[:start] + lead + dlg.result_text.strip() + trail + full[end:]
+                editor.setPlainText(new_full)
+                self._commit_current_editors()
+                self._save(silent=True)
+                self.statusBar().showMessage("Suggerimento applicato al passaggio.", 4000)
+            elif dlg.action == "regenerate":
+                self._apply_mentor_fix(note)
+
+        def fail(err):
+            busy.close()
+            QMessageBox.critical(self, "Applica suggerimento", err)
+
+        self._mentor_fix_worker = AiWorker(
+            lambda: self.engine.edit_text(instruction, stripped, self.book))
+        self._mentor_fix_worker.done.connect(done)
+        self._mentor_fix_worker.failed.connect(fail)
+        self._mentor_fix_worker.start()
 
     def _open_metrics(self):
         self._commit_current_editors()

@@ -59,7 +59,8 @@ class LatexFixDialog(QDialog):
     """Mostra la correzione proposta (riepilogo + diff) e il sorgente modificabile."""
 
     def __init__(self, parent, original: str, proposed: str, summary: str,
-                 attempt: int = 1, allow_regenerate: bool = True):
+                 attempt: int = 1, allow_regenerate: bool = True,
+                 accept_label: str = " Accetta e ricompila"):
         super().__init__(parent)
         self.setWindowTitle(f"Correzione LaTeX — tentativo {attempt}")
         self.setWindowIcon(app_icon())
@@ -104,7 +105,7 @@ class LatexFixDialog(QDialog):
             row.addWidget(b_regen)
         row.addStretch(1)
         b_reject = QPushButton(icon("x"), " Rifiuta"); b_reject.clicked.connect(self.reject)
-        b_accept = QPushButton(icon("check"), " Accetta e ricompila")
+        b_accept = QPushButton(icon("check"), accept_label)
         b_accept.setObjectName("Primary"); b_accept.clicked.connect(self._accept)
         row.addWidget(b_reject); row.addWidget(b_accept)
         lay.addLayout(row)

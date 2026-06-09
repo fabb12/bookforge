@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -263,6 +264,64 @@ def compile_tex(tex_path: str | Path) -> tuple[bool, str]:
         return False, "Timeout durante la compilazione."
     except Exception as e:
         return False, f"Errore di compilazione: {e}"
+
+
+def extract_latex_errors(log: str, max_chars: int = 2500) -> str:
+    """Estrae dal log di compilazione i blocchi di errore significativi.
+
+    Funzione pura: serve a passare all'LLM un riassunto compatto del problema
+    invece dell'intero log (spesso lungo migliaia di righe). Cattura le righe
+    che iniziano con `!` (gli errori di TeX/LaTeX) insieme al loro contesto —
+    in particolare le righe `l.NN` che indicano dove si è interrotto — e gli
+    avvisi rilevanti (`Undefined`, `Missing`, `Runaway argument`).
+
+    Restituisce stringa vuota se non trova errori riconoscibili.
+    """
+    lines = log.splitlines()
+    blocks: list[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        if line.startswith("!"):
+            # un errore: prendi la riga e il contesto fino alla riga `l.NN`
+            block = [line]
+            j = i + 1
+            saw_line_marker = False
+            while j < n and j - i <= 8:
+                nxt = lines[j]
+                block.append(nxt)
+                if re.match(r"^l\.\d+", nxt):
+                    saw_line_marker = True
+                    # includi anche la riga successiva (il resto del costrutto)
+                    if j + 1 < n:
+                        block.append(lines[j + 1])
+                        j += 1
+                    break
+                j += 1
+            if not saw_line_marker:
+                # errore senza marcatore di riga: limita a poche righe utili
+                block = block[:4]
+            blocks.append("\n".join(block).rstrip())
+            i = j + 1
+            continue
+        # avvisi tipici che spesso accompagnano un errore
+        if re.search(r"Runaway argument|Undefined control sequence|"
+                     r"Missing .* inserted|Emergency stop", line):
+            blocks.append(line.strip())
+        i += 1
+
+    # dedup mantenendo l'ordine
+    seen: set[str] = set()
+    unique: list[str] = []
+    for b in blocks:
+        if b and b not in seen:
+            seen.add(b)
+            unique.append(b)
+    out = "\n\n".join(unique).strip()
+    if len(out) > max_chars:
+        out = out[:max_chars] + "\n…(troncato)"
+    return out
 
 
 def open_pdf(project: Project) -> tuple[bool, str]:

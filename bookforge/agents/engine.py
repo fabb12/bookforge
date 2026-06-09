@@ -191,6 +191,17 @@ PROOFREAD_PROMPT = (
     "Restituisci SOLO il paragrafo corretto, come testo semplice."
 )
 
+FIX_LATEX_PROMPT = (
+    "Sei un esperto di LaTeX. Ricevi il SORGENTE completo di un documento .tex e il "
+    "LOG con gli errori di compilazione. Individua la causa degli errori e correggi il "
+    "sorgente affinché compili senza errori. Modifica SOLO il minimo necessario per "
+    "risolvere i problemi segnalati: non riscrivere il contenuto, non rimuovere testo "
+    "dell'autore, non cambiare lo stile. Tipici interventi: escape di caratteri speciali "
+    "(&, %, $, #, _), parentesi/ambienti non bilanciati, comandi o pacchetti mancanti, "
+    "\\begin/\\end disallineati. Restituisci SOLO il sorgente .tex completo e corretto, "
+    "senza spiegazioni, commenti aggiuntivi o blocchi di codice markdown."
+)
+
 # --- comandi di scrittura assistita (editing sulla selezione) ---
 EDITOR_PROMPT = (
     "Sei un editor di testi esperto al servizio di un autore. Ricevi un BRANO e "
@@ -355,6 +366,14 @@ class DatapizzaEngine:
         a = self._agent("formatter", FORMATTER_PROMPT)
         out = a.run(text).text.strip()
         return _strip_code_fences(out)
+
+    def fix_latex(self, source: str, errors: str) -> str:
+        """Corregge il sorgente .tex a partire dagli errori di compilazione."""
+        a = self._agent("latexfixer", FIX_LATEX_PROMPT)
+        task = (f"ERRORI DI COMPILAZIONE:\n{errors}\n\n"
+                f"SORGENTE .tex DA CORREGGERE:\n{source}")
+        out = a.run(task).text.strip()
+        return _strip_code_fences(out) or source
 
     def summarize(self, text: str) -> str:
         a = self._agent("summary", SUMMARY_PROMPT)
@@ -589,6 +608,25 @@ class MockEngine:
         from ..core.latex_builder import escape_latex
         return "\n\n".join(escape_latex(p.strip())
                            for p in text.split("\n\n") if p.strip())
+
+    def fix_latex(self, source: str, errors: str) -> str:
+        """Correzione offline: escape conservativo dei caratteri speciali nudi.
+
+        Senza LLM non si può ragionare sul log, ma molti errori di compilazione
+        nascono da caratteri speciali non scappati nel corpo del testo. Qui si
+        applica un escape prudente di `& # _ %` solo quando NON sono già
+        preceduti da un backslash, lasciando intatto tutto il resto.
+        """
+        # `% ` resta un commento valido: si scappa solo se non a inizio costrutto;
+        # per prudenza si evita di toccare le righe che iniziano con `%`.
+        out_lines = []
+        for line in source.splitlines():
+            if line.lstrip().startswith("%"):
+                out_lines.append(line)
+                continue
+            fixed = re.sub(r"(?<!\\)([&#_])", r"\\\1", line)
+            out_lines.append(fixed)
+        return "\n".join(out_lines)
 
     def summarize(self, text: str) -> str:
         first = text.strip().split("\n\n")[0]

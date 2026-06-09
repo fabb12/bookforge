@@ -245,6 +245,50 @@ def test_write_tex_activates_bibliography_when_bib_present(tmp_path):
     assert r"\bibliography{references}" in tex
 
 
+def test_extract_latex_errors_captures_error_blocks():
+    log = (
+        "This is pdfTeX\n"
+        "(./book.tex\n"
+        "! Undefined control sequence.\n"
+        "l.42 \\badcommand\n"
+        "             {foo}\n"
+        "Some more output\n"
+        "! Missing $ inserted.\n"
+        "l.51 a_b\n"
+        "Output written\n"
+    )
+    errors = compiler.extract_latex_errors(log)
+    assert "Undefined control sequence" in errors
+    assert "l.42" in errors
+    assert "Missing $ inserted" in errors
+    assert "l.51" in errors
+    # il rumore non-errore non finisce nel riassunto
+    assert "This is pdfTeX" not in errors
+
+
+def test_extract_latex_errors_empty_when_clean():
+    assert compiler.extract_latex_errors("PDF generato: book.pdf\nNiente errori") == ""
+
+
+def test_extract_latex_errors_respects_max_chars():
+    log = "\n".join(f"! Errore numero {i} qui" for i in range(500))
+    out = compiler.extract_latex_errors(log, max_chars=200)
+    assert len(out) <= 200 + len("\n…(troncato)")
+    assert out.endswith("…(troncato)")
+
+
+def test_mock_engine_fix_latex_escapes_special_chars():
+    from bookforge.agents.engine import MockEngine
+    eng = MockEngine()
+    fixed = eng.fix_latex("Costo del 50% di A & B con x_1 e #1.", errors="")
+    # `&`, `_`, `#` vengono scappati; `%` resta (commento valido)
+    assert r"A \& B" in fixed
+    assert r"x\_1" in fixed
+    assert r"\#1" in fixed
+    # un carattere già scappato non viene raddoppiato
+    assert eng.fix_latex(r"gia\& scappato", errors="").count(r"\&") == 1
+
+
 def test_needs_bibtex_detects_citations(tmp_path):
     tex = tmp_path / "book.tex"
     tex.write_text("dummy", encoding="utf-8")

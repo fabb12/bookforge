@@ -37,6 +37,8 @@ class MainWindow(QMainWindow):
         self.book = project.book
         self.worker: GenerateWorker | None = None
         self._dirty = False
+        self._log_dialog = None          # finestra del log LaTeX (creata su richiesta)
+        self._last_compile = None        # (ok, log) dell'ultima compilazione
 
         self.app_settings = AppSettings.load()
         self.engine_config = EngineConfig.from_settings(self.app_settings)
@@ -181,6 +183,7 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
         add("Esporta .tex", self._export_tex, "file")
         add("Compila PDF", self._compile_pdf, "wrench")
+        add("Log LaTeX", self._show_latex_log, "file-text")
         add("Apri in TeXstudio", self._open_texstudio, "book-open")
         add("Apri PDF", self._open_pdf, "eye")
 
@@ -1029,14 +1032,107 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f".tex esportato: {path}", 5000)
         QMessageBox.information(self, "Esportato", f"File LaTeX salvato in:\n{path}")
 
+    def _log_window(self):
+        """Restituisce la finestra del log LaTeX, creandola la prima volta."""
+        if self._log_dialog is None:
+            from .latex_log_dialog import LatexLogDialog
+            self._log_dialog = LatexLogDialog(self, on_fix=self._fix_latex_with_ai)
+        return self._log_dialog
+
+    def _show_latex_log(self):
+        """Apre (o riporta in primo piano) la finestra del log dell'ultima compilazione."""
+        dlg = self._log_window()
+        if self._last_compile is None:
+            dlg.set_log(False, "Nessuna compilazione ancora eseguita.\n"
+                              "Premi «Compila PDF» per generare il documento.",
+                        can_fix=False)
+        dlg.show_log()
+
+    def _present_compile_result(self, ok: bool, log: str):
+        """Mostra l'esito nella finestra dedicata e aggiorna la status bar."""
+        self._last_compile = (ok, log)
+        dlg = self._log_window()
+        # il pulsante «Correggi con AI» ha senso solo se ci sono errori estraibili
+        can_fix = bool(compiler.extract_latex_errors(log)) if not ok else False
+        dlg.set_log(ok, log, can_fix=can_fix)
+        dlg.show_log()
+        if ok:
+            self.statusBar().showMessage("PDF compilato.", 4000)
+        else:
+            self.statusBar().showMessage("Compilazione fallita — vedi il log LaTeX.", 6000)
+
     def _compile_pdf(self):
         self._save(silent=True)
         ok, log = compiler.compile_pdf(self.project)
-        if ok:
-            self.statusBar().showMessage("PDF compilato.", 4000)
-            QMessageBox.information(self, "Compilazione", log[:1500])
-        else:
-            QMessageBox.warning(self, "Compilazione", log[:3000])
+        self._present_compile_result(ok, log)
+
+    def _fix_latex_with_ai(self):
+        """Usa il log degli errori per chiedere al motore di correggere il .tex.
+
+        Il sorgente corrente e gli errori estratti vengono passati a
+        `engine.fix_latex`; la proposta passa dall'anteprima Accetta/Rifiuta. Se
+        accettata, il .tex corretto viene salvato e ricompilato (via `compile_tex`,
+        così la correzione non viene sovrascritta dalla rigenerazione dal modello).
+        """
+        if self._last_compile is None:
+            return
+        tex_path = self.project.tex_path
+        try:
+            source = tex_path.read_text(encoding="utf-8")
+        except OSError as e:
+            QMessageBox.warning(self, "Correzione LaTeX",
+                                f"Impossibile leggere il sorgente .tex:\n{e}")
+            return
+        _, log = self._last_compile
+        errors = compiler.extract_latex_errors(log)
+        if not errors:
+            QMessageBox.information(self, "Correzione LaTeX",
+                                    "Nessun errore riconoscibile nel log.")
+            return
+
+        from .ai_worker import AiWorker
+        from .ai_preview import AiPreviewDialog
+        if getattr(self, "_fix_worker", None) and self._fix_worker.isRunning():
+            return
+        busy = QProgressDialog("Analizzo gli errori e correggo il LaTeX…", None, 0, 0, self)
+        busy.setWindowTitle("AI"); busy.setCancelButton(None)
+        busy.setMinimumDuration(0); busy.show()
+
+        def fn():
+            return self.engine.fix_latex(source, errors)
+
+        def done(result):
+            busy.close()
+            fixed = str(result).strip()
+            if not fixed or fixed == source.strip():
+                QMessageBox.information(self, "Correzione LaTeX",
+                                        "Il motore non ha proposto modifiche.")
+                return
+            dlg = AiPreviewDialog(self, "AI — Correzione errori LaTeX",
+                                  original=source, proposed=fixed,
+                                  allow_regenerate=True)
+            dlg.exec()
+            if dlg.action == "accept":
+                try:
+                    tex_path.write_text(dlg.result_text, encoding="utf-8")
+                except OSError as e:
+                    QMessageBox.critical(self, "Correzione LaTeX",
+                                         f"Impossibile salvare il .tex:\n{e}")
+                    return
+                # ricompila direttamente il .tex corretto (non rigenerare dal modello)
+                ok, log = compiler.compile_tex(tex_path)
+                self._present_compile_result(ok, log)
+            elif dlg.action == "regenerate":
+                self._fix_latex_with_ai()
+
+        def fail(err):
+            busy.close()
+            QMessageBox.critical(self, "Correzione LaTeX", err)
+
+        self._fix_worker = AiWorker(fn)
+        self._fix_worker.done.connect(done)
+        self._fix_worker.failed.connect(fail)
+        self._fix_worker.start()
 
     def _open_texstudio(self):
         self._save(silent=True)
